@@ -1,33 +1,31 @@
-// src/screens/auth/AuthStack.tsx - Placeholder
+// src/screens/auth/AuthStack.tsx
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { createStackNavigator } from '@react-navigation/stack';
+import LoginScreen from './LoginScreen';
+import RegisterScreen from './RegisterScreen';
+import ForgotPasswordScreen from './ForgotPasswordScreen';
+import TermsScreen from './TermsScreen';
+import PrivacyScreen from './PrivacyScreen';
+
+const Stack = createStackNavigator();
 
 const AuthStack = () => {
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Auth Stack - Coming Soon!</Text>
-      <Text style={styles.subtext}>Login/Signup screens will go here</Text>
-    </View>
+    <Stack.Navigator
+      initialRouteName="Login"
+      screenOptions={{
+        headerShown: false, // No headers for clean design
+        cardStyle: { backgroundColor: 'transparent' },
+      }}
+    >
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <Stack.Screen name="Terms" component={TermsScreen} />
+      <Stack.Screen name="Privacy" component={PrivacyScreen} />
+    </Stack.Navigator>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  text: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  subtext: {
-    fontSize: 14,
-    color: '#666666',
-  },
-});
 
 export default AuthStack;

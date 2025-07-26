@@ -6,41 +6,87 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { supabase } from './src/services/supabase';
 import { Session } from '@supabase/supabase-js';
 
-// Import screens (we'll create these step by step)
+// Font loading
+import { useFonts, Poppins_400Regular, Poppins_500Medium, Poppins_700Bold } from '@expo-google-fonts/poppins';
+
+// Import screens
 import SplashScreen from './src/screens/onboarding/SplashScreen';
 import GetStartedScreen from './src/screens/onboarding/GetStartedScreen';
 import AuthStack from './src/screens/auth/AuthStack';
-import PostAuthSetup from './src/screens/onboarding/PostAuthSetup';
+import PostAuthSetupScreen from './src/screens/onboarding/PostAuthSetupScreen';
 import MainTabNavigator from './src/navigation/MainTabNavigator';
 
 const Stack = createStackNavigator();
 
 export default function App() {
+  // All hooks must be called before any conditional returns
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_700Bold,
+  });
+
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
 
+  // Check if user has completed setup
+  const checkSetupStatus = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('has_completed_setup')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error checking setup status:', error);
+        return false;
+      }
+
+      return data?.has_completed_setup || false;
+    } catch (error) {
+      console.error('Error in checkSetupStatus:', error);
+      return false;
+    }
+  };
+
   useEffect(() => {
     // Show splash screen for 2 seconds while checking auth
-    setTimeout(() => {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setSession(session);
-        setIsLoading(false);
-        setShowSplash(false);
-      });
+    setTimeout(async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+
+      // If user is logged in, check their setup status
+      if (session?.user) {
+        const setupComplete = await checkSetupStatus(session.user.id);
+        setHasCompletedSetup(setupComplete);
+      }
+
+      setIsLoading(false);
+      setShowSplash(false);
     }, 2000);
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
+
+      // Check setup status when user logs in
+      if (session?.user) {
+        const setupComplete = await checkSetupStatus(session.user.id);
+        setHasCompletedSetup(setupComplete);
+      } else {
+        setHasCompletedSetup(false);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Show splash screen first
-  if (showSplash || isLoading) {
+  // Now we can safely use conditional returns after all hooks are called
+  // Show splash screen if fonts aren't loaded OR if we're still loading
+  if (!fontsLoaded || showSplash || isLoading) {
     return <SplashScreen />;
   }
 
@@ -55,7 +101,13 @@ export default function App() {
           </>
         ) : !hasCompletedSetup ? (
           // Logged in but needs to complete setup
-          <Stack.Screen name="PostAuthSetup" component={PostAuthSetup} />
+          <Stack.Screen 
+            name="PostAuthSetup" 
+            component={PostAuthSetupScreen}
+            initialParams={{ 
+              onSetupComplete: () => setHasCompletedSetup(true) 
+            }}
+          />
         ) : (
           // Ready for main app
           <Stack.Screen name="Main" component={MainTabNavigator} />

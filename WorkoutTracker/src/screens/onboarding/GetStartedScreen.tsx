@@ -5,9 +5,9 @@ import {
   View, 
   StyleSheet, 
   Dimensions, 
-  Image, 
   TouchableOpacity, 
-  Text 
+  Text,
+  Image
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
@@ -17,13 +17,11 @@ const GetStartedScreen = () => {
   const navigation = useNavigation();
 
   const handleGetStarted = () => {
-    // Navigate to Auth stack when button is pressed
     navigation.navigate('Auth' as never);
   };
 
   return (
     <View style={styles.container}>
-      {/* Logo Section - positioned in upper portion */}
       <View style={styles.logoSection}>
         <Image 
           source={require('../../../assets/fl-logo-colored.png')} 
@@ -32,12 +30,11 @@ const GetStartedScreen = () => {
         />
       </View>
 
-      {/* Button Section - positioned at bottom */}
       <View style={styles.buttonSection}>
         <TouchableOpacity 
           style={styles.getStartedButton}
           onPress={handleGetStarted}
-          activeOpacity={0.95} // Slight scale effect on press
+          activeOpacity={0.95}
         >
           <Text style={styles.buttonText}>Get Started</Text>
         </TouchableOpacity>
@@ -49,35 +46,33 @@ const GetStartedScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF', // White background
-    paddingHorizontal: 24, // Consistent padding
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 24,
   },
   logoSection: {
-    flex: 0.6, // Takes up 60% of screen for logo positioning
-    justifyContent: 'center', // Centers logo in this section
+    flex: 0.6,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: height * 0.1, // Positions logo ~25-30% from top
+    paddingTop: height * 0.1,
   },
   logo: {
-    width: 180, // Same dimensions as splash
+    width: 180,
     height: 150,
   },
   buttonSection: {
-    flex: 0.4, // Takes up 40% of screen for button area
-    justifyContent: 'flex-end', // Pushes button toward bottom
+    flex: 0.4,
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    paddingBottom: 48, // Bottom spacing as specified
+    paddingBottom: 48,
   },
   getStartedButton: {
-    backgroundColor: '#17D4D4', // Blue background
-    borderColor: '#000000', // Black border
-    borderWidth: 1,
-    borderRadius: 26, // Full pill shape (half of height)
-    width: width * 0.8, // 80% of screen width (~312px on standard screen)
+    backgroundColor: '#17D4D4',
+    // Removed borderColor and borderWidth
+    borderRadius: 26,
+    width: width * 0.8,
     height: 52,
     justifyContent: 'center',
     alignItems: 'center',
-    // Subtle drop shadow
     shadowColor: '#000000',
     shadowOffset: {
       width: 0,
@@ -85,13 +80,13 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.1,
     shadowRadius: 6,
-    elevation: 3, // Android shadow
+    elevation: 3,
   },
   buttonText: {
-    color: '#FFFFFF', // White text
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600', // Semi-bold for clarity
-    letterSpacing: 0.5, // Slight letter spacing for readability
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
 });
 
