@@ -92,7 +92,7 @@ const LoginScreen = () => {
     <View style={styles.container}>
       <LinearGradient
         colors={['#17D4D4', '#FFFFFF']}
-        locations={[0, 1]}
+        locations={[0, 0.8]}
         style={styles.gradient}
       >
         {/* Scrollable Content Area */}
@@ -213,17 +213,18 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   welcomeText: {
-    fontSize: 24,
+    fontSize: 30,
     fontWeight: 'bold',
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'Poppins-ExtraBold',
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginBottom: 2,
   },
   subtitleText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '500',
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: 'Poppins-Light',
     color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: 32,
   },
   inputSection: {
     marginBottom: 20,
@@ -236,11 +237,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 24,
     height: 48,
+    marginLeft: 10,
+    marginRight: 10,
   },
   input: {
     flex: 1,
     fontSize: 16,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'Poppins-Regular',
     color: '#000000',
   },
   inputIcon: {
@@ -248,9 +251,9 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   forgotPasswordText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '300',
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'Poppins-Regular',
     color: 'rgba(0, 0, 0, 0.5)',
     textAlign: 'center',
   },
@@ -278,19 +281,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   loginButtonText: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'Poppins-Bold',
     color: '#FFFFFF',
   },
   registerText: {
-    fontSize: 14,
-    fontFamily: 'Poppins_400Regular',
+    fontSize: 15,
+    fontFamily: 'Poppins-Regular',
     color: 'rgba(0, 0, 0, 0.5)',
   },
   registerLink: {
     fontWeight: '500',
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: 'Poppins-Medium',
     color: '#17D4D4',
   },
 });

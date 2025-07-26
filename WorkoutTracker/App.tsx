@@ -6,8 +6,14 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { supabase } from './src/services/supabase';
 import { Session } from '@supabase/supabase-js';
 
-// Font loading
-import { useFonts, Poppins_400Regular, Poppins_500Medium, Poppins_700Bold } from '@expo-google-fonts/poppins';
+// Font loading - combining Google Fonts with custom font
+import { useFonts } from 'expo-font';
+import { 
+  Poppins_400Regular, 
+  Poppins_500Medium, 
+  Poppins_600SemiBold,
+  Poppins_700Bold 
+} from '@expo-google-fonts/poppins';
 
 // Import screens
 import SplashScreen from './src/screens/onboarding/SplashScreen';
@@ -19,11 +25,17 @@ import MainTabNavigator from './src/navigation/MainTabNavigator';
 const Stack = createStackNavigator();
 
 export default function App() {
-  // All hooks must be called before any conditional returns
+  // Load both Google Fonts and custom fonts
   const [fontsLoaded] = useFonts({
-    Poppins_400Regular,
-    Poppins_500Medium,
-    Poppins_700Bold,
+    // Google Fonts from @expo-google-fonts/poppins
+    'Poppins-Regular': Poppins_400Regular,
+    'Poppins-Medium': Poppins_500Medium,
+    'Poppins-SemiBold': Poppins_600SemiBold,
+    'Poppins-Bold': Poppins_700Bold,
+    
+    // Custom font from your assets folder
+    'Poppins-ExtraBold': require('./assets/fonts/Poppins-ExtraBold.ttf'),
+    'Poppins-Light': require('./assets/fonts/Poppins-Light.ttf'),
   });
 
   const [session, setSession] = useState<Session | null>(null);
@@ -84,7 +96,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Now we can safely use conditional returns after all hooks are called
   // Show splash screen if fonts aren't loaded OR if we're still loading
   if (!fontsLoaded || showSplash || isLoading) {
     return <SplashScreen />;

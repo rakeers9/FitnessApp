@@ -149,7 +149,7 @@ const CoachConnectionScreen: React.FC<Props> = ({ navigation, route }) => {
     <View style={styles.container}>
       <LinearGradient
         colors={['#17D4D4', '#FFFFFF']}
-        locations={[0, 1]}
+        locations={[0, 0.8]}
         style={styles.gradient}
       >
         {/* Back Button */}
@@ -267,25 +267,31 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   textSection: {
-    marginBottom: 32,
+    marginBottom: 40,
+    marginLeft: 14, // Align with back button
+    marginRight: 14,
   },
   titleText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF', // White text as specified
-    marginBottom: 12,
-    textAlign: 'left', // Left-aligned as specified
+    fontSize: 28,
+    fontWeight: '700', // Bold weight
+    color: '#FFFFFF',
+    marginBottom: 8,
+    textAlign: 'left', // Left-aligned instead of center
+    fontFamily: 'Poppins-ExtraBold', // Custom font
   },
   subtitleText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)', // White with opacity
-    fontWeight: '500',
-    textAlign: 'left', // Left-aligned as specified
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.85)', // Adjusted opacity
+    fontWeight: '400',
+    textAlign: 'left', // Left-aligned instead of center
     lineHeight: 20,
-    // No paddingHorizontal to match design
+    maxWidth: 300, // Limit width for readability
+    fontFamily: 'Poppins-Light', // Custom font
   },
   inputSection: {
     marginBottom: 20,
+    marginLeft: 10,
+    marginRight: 10,
   },
   inputContainer: {
     backgroundColor: 'rgba(196, 196, 196, 0.2)',
@@ -300,6 +306,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#000000',
+    fontFamily: 'Poppins-Regular',
   },
   inputIcon: {
     color: 'rgba(0, 0, 0, 0.4)',
@@ -321,23 +328,35 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: '#17D4D4',
+    borderRadius: 26, // Pill-shaped
+    width: width * 0.85, // 85% of screen width
     height: 52,
-    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
-    width: width * 0.85,
-    marginBottom: 20,
+    alignSelf: 'center', // Center horizontally
+    // Soft drop shadow for floating effect
+    shadowColor: '#000000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    marginTop: 420, // Space above button
+    marginBottom: 15, // Space below button
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   buttonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
     color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600', // Semi-bold
+    fontFamily: 'Poppins-Bold',
   },
   skipText: {
-    fontSize: 14,
+    fontSize: 16,
     color: 'rgba(0, 0, 0, 0.5)',
   },
   skipLink: {

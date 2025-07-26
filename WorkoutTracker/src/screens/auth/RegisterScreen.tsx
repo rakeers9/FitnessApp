@@ -168,7 +168,7 @@ const RegisterScreen = () => {
     <View style={styles.container}>
       <LinearGradient
         colors={['#17D4D4', '#FFFFFF']}
-        locations={[0, 1]}
+        locations={[0, 0.8]}
         style={styles.gradient}
       >
         {/* Scrollable Content Area */}
@@ -325,17 +325,18 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   welcomeText: {
-    fontSize: 24,
+    fontSize: 30,
     fontWeight: 'bold',
+    fontFamily: 'Poppins-ExtraBold',
     color: '#FFFFFF',
-    marginBottom: 8,
-    fontFamily: 'Poppins_700Bold',
+    marginBottom: 2,
   },
   subtitleText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 16,
     fontWeight: '500',
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'Poppins-Light',
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: 32,
   },
   inputSection: {
     marginBottom: 20,
@@ -348,12 +349,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 24,
     height: 48,
+    marginLeft: 10,
+    marginRight: 10,
   },
   input: {
     flex: 1,
     fontSize: 16,
     color: '#000000',
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'Poppins-Regular',
   },
   inputIcon: {
     color: 'rgba(0, 0, 0, 0.4)',
@@ -373,10 +376,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(0, 0, 0, 0.3)',
     backgroundColor: 'transparent',
-    marginRight: 12,
-    marginTop: 2,
+    // marginRight: 12,
+    marginTop: -10,
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 14,
   },
   checkboxChecked: {
     backgroundColor: '#17D4D4',
@@ -389,12 +393,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(0, 0, 0, 0.5)',
     lineHeight: 18,
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'Poppins-Regular',
+    marginRight: 4,
+    marginLeft: 8,
+    marginTop: -10,
   },
   linkText: {
     color: '#17D4D4',
     textDecorationLine: 'underline',
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'Poppins-Regular',
+    marginRight: 4,
+    marginLeft: 4,
   },
   spacer: {
     flex: 1,

@@ -90,17 +90,9 @@ const PreferencesScreen: React.FC<Props> = ({ navigation, route }) => {
     <View style={styles.container}>
       <LinearGradient
         colors={['#17D4D4', '#FFFFFF']}
-        locations={[0, 1]}
+        locations={[0, 0.8]}
         style={styles.gradient}
       >
-        {/* Back Button */}
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-
         {/* Scrollable Content Area */}
         <ScrollView 
           style={styles.scrollView}
@@ -125,7 +117,7 @@ const PreferencesScreen: React.FC<Props> = ({ navigation, route }) => {
             {/* Unit Selector Section */}
             <View style={styles.inputSection}>
               <View style={styles.unitSelectorRow}>
-                <Text style={styles.fieldLabel}>Set your unit preference</Text>
+                <Text style={styles.fieldLabel}>Choose your unit</Text>
                 
                 {/* Unit Selector Toggle */}
                 <View style={styles.toggleContainer}>
@@ -225,37 +217,55 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   textSection: {
-    marginBottom: 32,
+    marginBottom: 40,
   },
   titleText: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFFFFF', // White text as specified
-    marginBottom: 12,
-    textAlign: 'left', // Left-aligned as specified
+    fontFamily: 'Poppins-ExtraBold',
+    color: '#FFFFFF',
+    marginBottom: 10,
+    marginTop: 10,
   },
   subtitleText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)', // White with opacity
-    fontWeight: '500',
-    textAlign: 'left', // Left-aligned as specified
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.85)', // Adjusted opacity
+    fontWeight: '400',
+    textAlign: 'left', // Left-aligned instead of center
     lineHeight: 20,
+    maxWidth: 300, // Limit width for readability
+    fontFamily: 'Poppins-Light', // Custom font
     // Removed paddingHorizontal to match design
   },
   inputSection: {
     marginBottom: 20,
   },
   unitSelectorRow: {
+    backgroundColor: '#17D4D4', // Same blue background as the button
+    borderRadius: 26, // Same border radius as the button
+    width: width * 0.85, // Same width as the button
+    height: 52, // Same height as the button
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 24,
-    // Removed marginHorizontal for proper alignment
+    paddingHorizontal: 20, // Add padding for content inside the bubble
+    alignSelf: 'center', // Center the bubble horizontally
+    // Add the same shadow as the button if desired
+    shadowColor: '#000000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   fieldLabel: {
     fontSize: 16, // Increased from 14 as specified
     color: '#FFFFFF', // Changed to white to match design
     fontWeight: '500',
+    fontFamily: 'Poppins-Medium',
   },
   toggleContainer: {
     flexDirection: 'row',
@@ -312,6 +322,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    fontFamily: 'Poppins-Bold',
   },
 });
 

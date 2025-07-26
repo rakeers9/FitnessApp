@@ -24,7 +24,7 @@ const PrivacyScreen = () => {
     <View style={styles.container}>
       <LinearGradient
         colors={['#17D4D4', '#FFFFFF']}
-        locations={[0, 1]}
+        locations={[0, 0.8]}
         style={styles.gradient}
       >
         {/* Back Button */}
