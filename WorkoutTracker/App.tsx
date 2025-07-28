@@ -65,35 +65,73 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Show splash screen for 2 seconds while checking auth
-    setTimeout(async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
+    let mounted = true;
 
-      // If user is logged in, check their setup status
-      if (session?.user) {
-        const setupComplete = await checkSetupStatus(session.user.id);
-        setHasCompletedSetup(setupComplete);
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
+
+        if (session?.user) {
+          // Check setup status BEFORE setting session to avoid flash
+          const setupComplete = await checkSetupStatus(session.user.id);
+          if (mounted) {
+            setHasCompletedSetup(setupComplete);
+            setSession(session);
+          }
+        } else {
+          if (mounted) {
+            setSession(session);
+            setHasCompletedSetup(false);
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing auth:', error);
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+          setTimeout(() => {
+            if (mounted) setShowSplash(false);
+          }, 2000);
+        }
       }
+    };
 
-      setIsLoading(false);
-      setShowSplash(false);
-    }, 2000);
+    initializeAuth();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
 
-      // Check setup status when user logs in
       if (session?.user) {
-        const setupComplete = await checkSetupStatus(session.user.id);
-        setHasCompletedSetup(setupComplete);
+        // For login events, check setup status first to prevent flash
+        if (event === 'SIGNED_IN') {
+          const setupComplete = await checkSetupStatus(session.user.id);
+          if (mounted) {
+            setHasCompletedSetup(setupComplete);
+            setSession(session);
+          }
+        } else {
+          // For other events, update normally
+          setSession(session);
+          const setupComplete = await checkSetupStatus(session.user.id);
+          if (mounted) {
+            setHasCompletedSetup(setupComplete);
+          }
+        }
       } else {
-        setHasCompletedSetup(false);
+        if (mounted) {
+          setSession(session);
+          setHasCompletedSetup(false);
+        }
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Show splash screen if fonts aren't loaded OR if we're still loading
@@ -103,7 +141,14 @@ export default function App() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator 
+        screenOptions={{ 
+          headerShown: false,
+          cardStyle: { backgroundColor: '#FFFFFF' }, // Solid background
+          animation: 'none', // Disable all animations for instant transitions
+          gestureEnabled: false,   // Disable gestures that can cause overlaps
+        }}
+      >
         {!session ? (
           // Not logged in flow
           <>

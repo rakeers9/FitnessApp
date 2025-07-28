@@ -166,11 +166,11 @@ const RegisterScreen = () => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
+      {/* <LinearGradient
         colors={['#17D4D4', '#FFFFFF']}
         locations={[0, 0.8]}
         style={styles.gradient}
-      >
+      > */}
         {/* Scrollable Content Area */}
         <ScrollView 
           style={styles.scrollView}
@@ -182,7 +182,7 @@ const RegisterScreen = () => {
           <View style={styles.topSection}>
             <View style={styles.logoSection}>
               <Image 
-                source={require('../../../assets/fl-logo-white.png')} 
+                source={require('../../../assets/fl-logo-colored.png')} 
                 style={styles.logo}
                 resizeMode="contain"
               />
@@ -286,7 +286,7 @@ const RegisterScreen = () => {
             </Text>
           </TouchableOpacity>
         </View>
-      </LinearGradient>
+      {/* </LinearGradient> */}
     </View>
   );
 };
@@ -296,11 +296,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  gradient: {
-    flex: 1,
-    borderTopLeftRadius: 40,
-    borderTopRightRadius: 40,
-  },
+  // gradient: {
+  //   flex: 1,
+  //   borderTopLeftRadius: 40,
+  //   borderTopRightRadius: 40,
+  // },
   scrollView: {
     flex: 1,
   },
@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
   },
   logoSection: {
     alignItems: 'center',
-    marginTop: 96,
+    marginTop: 124,
     marginBottom: 24,
   },
   logo: {
@@ -328,14 +328,14 @@ const styles = StyleSheet.create({
     fontSize: 30,
     fontWeight: 'bold',
     fontFamily: 'Poppins-ExtraBold',
-    color: '#FFFFFF',
+    color: '#000000',
     marginBottom: 2,
   },
   subtitleText: {
     fontSize: 16,
     fontWeight: '500',
     fontFamily: 'Poppins-Light',
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(0, 0, 0, 0.8)',
     marginBottom: 32,
   },
   inputSection: {
@@ -426,23 +426,23 @@ const styles = StyleSheet.create({
     height: 52,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 10,
   },
   signUpButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'Poppins-Bold',
+    color: '#FFFFFF',
   },
   loginText: {
-    fontSize: 14,
+    fontSize: 15,
     color: 'rgba(0, 0, 0, 0.5)',
-    fontFamily: 'Poppins_400Regular',
+    fontFamily: 'Poppins-Medium',
   },
   loginLink: {
     color: '#17D4D4',
     fontWeight: '500',
-    fontFamily: 'Poppins_500Medium',
+    fontFamily: 'Poppins-Medium',
   },
 });
 

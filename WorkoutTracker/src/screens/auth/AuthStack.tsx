@@ -16,7 +16,9 @@ const AuthStack = () => {
       initialRouteName="Login"
       screenOptions={{
         headerShown: false, // No headers for clean design
-        cardStyle: { backgroundColor: 'transparent' },
+        cardStyle: { backgroundColor: '#FFFFFF' }, // Solid white background
+        animation: 'none', // Disable all animations for instant transitions
+        gestureEnabled: false,   // Disable swipe gestures that can cause overlaps
       }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />

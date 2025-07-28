@@ -72,7 +72,7 @@ const ForgotPasswordScreen = () => {
     <View style={styles.container}>
       <LinearGradient
         colors={['#17D4D4', '#FFFFFF']}
-        locations={[0, 0.8]}
+        locations={[0, 1]}
         style={styles.gradient}
       >
         {/* Back Button - Now solid white background */}
@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
     textAlign: 'left', // Left-aligned instead of center
     lineHeight: 20,
     maxWidth: 300, // Limit width for readability
-    fontFamily: 'Poppins-Light', // Custom font
+    fontFamily: 'Poppins-Medium', // Custom font
   },
   // Input section positioned with proper spacing
   inputSection: {

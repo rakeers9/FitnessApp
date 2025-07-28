@@ -83,10 +83,10 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   buttonText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    fontFamily: 'Poppins-Bold',
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: 0.5,
   },
 });
 
