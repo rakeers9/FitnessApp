@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 
 // Navigation props type
@@ -33,10 +34,12 @@ const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
   const [workouts, setWorkouts] = useState<WorkoutTemplate[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load workouts from database
-  useEffect(() => {
-    loadWorkouts();
-  }, []);
+  // Load workouts from database when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadWorkouts();
+    }, [])
+  );
 
   const loadWorkouts = async () => {
     try {
@@ -44,7 +47,10 @@ const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
       
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        console.log('No user found, cannot load workouts');
+        return;
+      }
 
       // Load workout templates for this user
       const { data, error } = await supabase
@@ -52,22 +58,37 @@ const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
         .select('*')
         .eq('user_id', user.id)
         .eq('is_active', true)
-        .order('created_at', { ascending: false });
+        .order('updated_at', { ascending: false });
 
       if (error) {
-        console.error('Error loading workouts:', error);
+        console.error('Database error loading workouts:', error);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        console.log('No workouts found in database');
+        setWorkouts([]);
         return;
       }
 
       // Transform data with proper typing
-      const transformedWorkouts: WorkoutTemplate[] = data?.map(template => ({
-        id: template.id as string,
-        name: template.name as string,
-        duration_minutes: 122, // Placeholder - we'll calculate this later
-        exercise_count: Array.isArray(template.exercises) ? template.exercises.length : 0,
-        thumbnail_url: null, // Explicitly null for now
-      })) || [];
+      const transformedWorkouts: WorkoutTemplate[] = data.map((template) => {
+        // Calculate exercise count from exercises JSONB array
+        const exerciseCount = Array.isArray(template.exercises) ? template.exercises.length : 0;
+        
+        // Calculate estimated duration (rough estimate: 5 mins per exercise)
+        const estimatedDuration = exerciseCount * 5;
 
+        return {
+          id: template.id as string,
+          name: template.name as string,
+          duration_minutes: estimatedDuration,
+          exercise_count: exerciseCount,
+          thumbnail_url: null, // Explicitly null for now
+        };
+      });
+
+      console.log(`Loaded ${transformedWorkouts.length} workouts from database`);
       setWorkouts(transformedWorkouts);
     } catch (error) {
       console.error('Error in loadWorkouts:', error);
@@ -78,7 +99,7 @@ const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
 
   // Handle create workout button
   const handleCreateWorkout = () => {
-    navigation.navigate('EditWorkout', { workout: null }); // null for new workout
+    navigation.navigate('EditWorkout', { workout: null }); // Explicitly pass null for new workout
   };
 
   // Handle notifications button
@@ -89,6 +110,68 @@ const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
   // Handle workout card press
   const handleWorkoutPress = (workout: WorkoutTemplate) => {
     navigation.navigate('EditWorkout', { workout });
+  };
+
+  // Handle workout menu (3-dots)
+  const handleWorkoutMenu = (workout: WorkoutTemplate, event?: any) => {
+    // Prevent card tap when menu is tapped
+    if (event) {
+      event.stopPropagation();
+    }
+    
+    Alert.alert(
+      workout.name,
+      'Choose an option:',
+      [
+        { 
+          text: 'Delete Workout', 
+          style: 'destructive',
+          onPress: () => handleDeleteWorkout(workout)
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  // Handle delete workout
+  const handleDeleteWorkout = (workout: WorkoutTemplate) => {
+    Alert.alert(
+      'Delete Workout',
+      `Are you sure you want to delete "${workout.name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('Deleting workout:', workout.id);
+              
+              const { error } = await supabase
+                .from('workout_templates')
+                .update({ is_active: false })
+                .eq('id', workout.id);
+
+              if (error) {
+                console.error('Error deleting workout:', error);
+                Alert.alert('Error', 'Failed to delete workout. Please try again.');
+                return;
+              }
+
+              console.log('Workout deleted successfully');
+              
+              // Remove from local state immediately
+              setWorkouts(prev => prev.filter(w => w.id !== workout.id));
+              
+              Alert.alert('Success', 'Workout deleted successfully');
+            } catch (error) {
+              console.error('Error in handleDeleteWorkout:', error);
+              Alert.alert('Error', 'Failed to delete workout. Please try again.');
+            }
+          }
+        },
+      ]
+    );
   };
 
   // Render individual workout card
@@ -123,6 +206,15 @@ const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
           <Text style={styles.infoText}>{item.exercise_count || 0} exercises</Text>
         </View>
       </View>
+
+      {/* 3-Dots Menu Button */}
+      <TouchableOpacity
+        style={styles.menuButton}
+        onPress={(event) => handleWorkoutMenu(item, event)}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Ionicons name="ellipsis-horizontal" size={20} color="#000000" />
+      </TouchableOpacity>
 
       {/* Arrow Icon */}
       <View style={styles.arrowContainer}>
@@ -228,6 +320,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 3,
+    position: 'relative',
   },
   thumbnailContainer: {
     marginRight: 12,
@@ -265,6 +358,17 @@ const styles = StyleSheet.create({
   },
   arrowContainer: {
     paddingLeft: 8,
+  },
+  
+  // Menu Button
+  menuButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    zIndex: 1,
   },
   
   // Empty State

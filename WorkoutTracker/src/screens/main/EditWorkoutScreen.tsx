@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
+import { supabase } from '../../services/supabase';
 
 // Types for navigation
 type EditWorkoutScreenProps = {
@@ -32,7 +33,8 @@ interface ExerciseSet {
 }
 
 interface Exercise {
-  id: string;
+  id: string; // Unique instance ID
+  original_exercise_id?: string; // Reference to original exercise in database
   name: string;
   duration_seconds?: number;
   sets_count: number;
@@ -40,6 +42,7 @@ interface Exercise {
   sets: ExerciseSet[];
   has_unread_comments?: boolean;
   thumbnail_url?: string;
+  muscle_groups?: string[]; // Add muscle_groups property
 }
 
 interface WorkoutTemplate {
@@ -63,42 +66,204 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(workout.name);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Sample data for testing filled state
-  useEffect(() => {
-    // If it's not a new workout and we don't have exercises, load sample data
-    if (!isNewWorkout && workout.exercises.length === 0) {
-      // Sample data to match the design
-      const sampleExercises: Exercise[] = [
-        {
-          id: '1',
-          name: 'Leg Press',
-          duration_seconds: 60,
-          sets_count: 3,
-          reps_count: 8,
-          has_unread_comments: false,
-          sets: [
-            { id: '1-1', set_number: 1, weight: 32, reps: 8, completed: true, is_previous: true },
-            { id: '1-2', set_number: 2, weight: 32, reps: 8, completed: true, is_previous: true },
-            { id: '1-3', set_number: 3, weight: 30, reps: 7, completed: true, is_previous: true },
-          ],
-        },
-        {
-          id: '2',
-          name: 'Incline Dumbell Curl',
-          duration_seconds: 120,
-          sets_count: 2,
-          reps_count: 15,
-          has_unread_comments: true, // Show red dot
-          sets: [
-            { id: '2-1', set_number: 1, weight: 12, reps: 15, completed: true, is_previous: true },
-            { id: '2-2', set_number: 2, weight: undefined, reps: undefined, completed: false, is_previous: false },
-          ],
-        },
-      ];
-      setWorkout(prev => ({ ...prev, exercises: sampleExercises, estimated_duration: 15 }));
+  // Save workout to database
+  const saveWorkout = async (workoutToSave?: WorkoutTemplate) => {
+    try {
+      setIsSaving(true);
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'You must be logged in to save workouts');
+        return null;
+      }
+
+      const workoutData = workoutToSave || workout;
+      
+      // Prepare exercises data for database (store as JSONB)
+      const exercisesForDB = workoutData.exercises.map(exercise => ({
+        id: exercise.id, // Unique instance ID
+        original_exercise_id: exercise.original_exercise_id || exercise.id, // Keep reference to original
+        name: exercise.name,
+        duration_seconds: exercise.duration_seconds,
+        sets_count: exercise.sets_count,
+        reps_count: exercise.reps_count,
+        muscle_groups: exercise.muscle_groups || [],
+        sets: exercise.sets,
+      }));
+
+      const workoutPayload = {
+        user_id: user.id,
+        name: workoutData.name,
+        description: `${workoutData.exercises.length} exercises`,
+        exercises: exercisesForDB,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      };
+
+      let savedWorkout: any = null;
+
+      if (workoutData.id) {
+        // Update existing workout
+        const { data, error } = await supabase
+          .from('workout_templates')
+          .update(workoutPayload)
+          .eq('id', workoutData.id)
+          .select()
+          .single();
+
+        if (error) throw error;
+        savedWorkout = data;
+      } else {
+        // Create new workout
+        const { data, error } = await supabase
+          .from('workout_templates')
+          .insert(workoutPayload)
+          .select()
+          .single();
+
+        if (error) throw error;
+        savedWorkout = data;
+        
+        // Update local state with the new ID
+        setWorkout(prev => ({ ...prev, id: savedWorkout.id }));
+      }
+
+      console.log('Workout saved successfully');
+      return savedWorkout;
+    } catch (error) {
+      console.error('Error saving workout:', error);
+      Alert.alert('Error', 'Failed to save workout. Please try again.');
+      return null;
+    } finally {
+      setIsSaving(false);
     }
-  }, [isNewWorkout]);
+  };
+
+  // Load workout data
+  useEffect(() => {
+    loadWorkoutData();
+  }, [workoutData]);
+
+  // Load previous exercise data for an exercise
+  const loadPreviousExerciseData = async (originalExerciseId: string, setsCount: number) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      // Get the most recent workout session that included this exercise
+      const { data: recentSessions, error } = await supabase
+        .from('workout_sessions')
+        .select(`
+          id,
+          completed_at,
+          workout_sets (
+            set_number,
+            weight,
+            reps,
+            exercise_id
+          )
+        `)
+        .eq('user_id', user.id)
+        .not('completed_at', 'is', null)
+        .order('completed_at', { ascending: false })
+        .limit(10); // Get last 10 sessions to search through
+
+      if (error || !recentSessions) {
+        console.log('No previous sessions found for exercise tracking');
+        return [];
+      }
+
+      // Find the most recent session that has data for this exercise
+      let previousSets: any[] = [];
+      
+      for (const session of recentSessions) {
+        const exerciseSets = session.workout_sets?.filter((set: any) => 
+          set.exercise_id === originalExerciseId
+        ) || [];
+        
+        if (exerciseSets.length > 0) {
+          previousSets = exerciseSets
+            .sort((a: any, b: any) => a.set_number - b.set_number)
+            .slice(0, setsCount); // Only get up to the number of sets in current workout
+          break;
+        }
+      }
+
+      return previousSets;
+    } catch (error) {
+      console.error('Error loading previous exercise data:', error);
+      return [];
+    }
+  };
+
+  // Load workout data with previous exercise records
+  const loadWorkoutData = async () => {
+    if (workoutData && workoutData.id) {
+      // Load existing workout from database
+      try {
+        const { data, error } = await supabase
+          .from('workout_templates')
+          .select('*')
+          .eq('id', workoutData.id)
+          .single();
+
+        if (error) {
+          console.error('Error loading workout:', error);
+          return;
+        }
+
+        if (data && data.exercises) {
+          // Transform database exercises back to component format
+          const transformedExercises = await Promise.all(
+            data.exercises.map(async (exercise: any) => {
+              const originalExerciseId = exercise.original_exercise_id || exercise.id;
+              
+              // Load previous exercise data for this exercise
+              const previousSets = await loadPreviousExerciseData(originalExerciseId, exercise.sets_count);
+              
+              // Create sets with previous data if available
+              const sets = [];
+              for (let i = 1; i <= exercise.sets_count; i++) {
+                const previousSet = previousSets.find((set: any) => set.set_number === i);
+                sets.push({
+                  id: `${exercise.id}-${i}`,
+                  set_number: i,
+                  weight: previousSet?.weight || undefined,
+                  reps: previousSet?.reps || undefined,
+                  completed: false, // Not completed in current session
+                  is_previous: !!previousSet, // Mark as previous data if we found historical data
+                });
+              }
+
+              return {
+                id: exercise.id, // Use the unique instance ID from database
+                original_exercise_id: originalExerciseId,
+                name: exercise.name,
+                duration_seconds: exercise.duration_seconds,
+                sets_count: exercise.sets_count,
+                reps_count: exercise.reps_count,
+                has_unread_comments: false, // TODO: Load from comments table
+                muscle_groups: exercise.muscle_groups,
+                sets: sets,
+              };
+            })
+          );
+
+          setWorkout(prev => ({
+            ...prev,
+            exercises: transformedExercises,
+            estimated_duration: Math.ceil(transformedExercises.length * 5),
+          }));
+        }
+      } catch (error) {
+        console.error('Error loading workout data:', error);
+      }
+    }
+    // For new workouts (workoutData is null), don't load any sample data
+    // Let the workout start completely empty
+  };
 
   // Calculate exercise count and duration
   const exerciseCount = workout.exercises.length;
@@ -110,9 +275,16 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
     setTempTitle(workout.name);
   };
 
-  const handleTitleSave = () => {
-    setWorkout(prev => ({ ...prev, name: tempTitle.trim() || 'New Workout' }));
+  const handleTitleSave = async () => {
+    const newTitle = tempTitle.trim() || 'New Workout';
+    const updatedWorkout = { ...workout, name: newTitle };
+    setWorkout(updatedWorkout);
     setIsEditingTitle(false);
+    
+    // Save to database if workout has content
+    if (workout.exercises.length > 0 || workout.id) {
+      await saveWorkout(updatedWorkout);
+    }
   };
 
   const handleTitleCancel = () => {
@@ -121,7 +293,11 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
   };
 
   // Navigation handlers
-  const handleBack = () => {
+  const handleBack = async () => {
+    // Only save workout if it has content and a meaningful name
+    if (workout.exercises.length > 0 && workout.name.trim() !== 'New Workout') {
+      await saveWorkout();
+    }
     navigation.goBack();
   };
 
@@ -131,21 +307,131 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
 
   const handleAddExercise = () => {
     navigation.navigate('ExerciseLibrary', {
-      onExercisesSelected: (selectedExercises: any[]) => {
-        // Handle selected exercises and add them to workout
-        console.log('Selected exercises:', selectedExercises);
-        Alert.alert('Success', `Added ${selectedExercises.length} exercises to workout!`);
-        // TODO: Actually add exercises to workout state
+      onExercisesSelected: async (selectedExercises: any[]) => {
+        // Transform selected exercises to workout format with default 3 sets x 12 reps
+        const newExercises = await Promise.all(
+          selectedExercises.map(async (exercise, index) => {
+            // Generate unique instance ID for each exercise (even if same exercise added multiple times)
+            const uniqueInstanceId = `${exercise.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            // Load previous exercise data for this exercise
+            const previousSets = await loadPreviousExerciseData(exercise.id, 3); // Default 3 sets
+            
+            // Create sets with previous data if available
+            const sets = [];
+            for (let i = 1; i <= 3; i++) {
+              const previousSet = previousSets.find((set: any) => set.set_number === i);
+              sets.push({
+                id: `${uniqueInstanceId}-${i}`,
+                set_number: i,
+                weight: previousSet?.weight || undefined,
+                reps: previousSet?.reps || undefined,
+                completed: false,
+                is_previous: !!previousSet, // Mark as previous data if found
+              });
+            }
+            
+            return {
+              id: uniqueInstanceId, // Use unique instance ID instead of original exercise ID
+              original_exercise_id: exercise.id, // Keep reference to original exercise
+              name: exercise.name,
+              duration_seconds: 60, // Default rest time
+              sets_count: 3, // Default sets
+              reps_count: 12, // Default reps
+              has_unread_comments: false,
+              muscle_groups: exercise.muscle_groups,
+              sets: sets,
+            };
+          })
+        );
+
+        // Update workout state
+        const updatedWorkout = {
+          ...workout,
+          exercises: [...workout.exercises, ...newExercises],
+          estimated_duration: workout.estimated_duration! + (newExercises.length * 5), // Rough estimate
+        };
+
+        setWorkout(updatedWorkout);
+
+        // Save to database
+        const savedWorkout = await saveWorkout(updatedWorkout);
+        if (savedWorkout) {
+          Alert.alert('Success', `Added ${selectedExercises.length} exercise${selectedExercises.length > 1 ? 's' : ''} to workout!`);
+        }
       }
     });
   };
 
-  const handleStart = () => {
-    if (workout.exercises.length === 0) {
-      Alert.alert('No Exercises', 'Please add some exercises before starting the workout.');
-      return;
+  // Save workout session data when workout is completed
+  const saveWorkoutSession = async (completedWorkout: WorkoutTemplate) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      // Create workout session record
+      const { data: session, error: sessionError } = await supabase
+        .from('workout_sessions')
+        .insert({
+          user_id: user.id,
+          template_id: completedWorkout.id,
+          workout_name: completedWorkout.name,
+          duration_minutes: completedWorkout.estimated_duration,
+          total_volume: 0, // TODO: Calculate total volume
+          date_performed: new Date().toISOString().split('T')[0],
+          completed_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (sessionError) {
+        console.error('Error creating workout session:', sessionError);
+        return null;
+      }
+
+      // Save individual sets for each exercise
+      const setPromises = completedWorkout.exercises.flatMap(exercise => 
+        exercise.sets
+          .filter(set => set.completed && (set.weight || set.reps)) // Only save completed sets with data
+          .map(set => 
+            supabase
+              .from('workout_sets')
+              .insert({
+                session_id: session.id,
+                exercise_id: exercise.original_exercise_id || exercise.id, // Use original exercise ID for tracking
+                set_number: set.set_number,
+                weight: set.weight,
+                reps: set.reps,
+                rest_seconds: exercise.duration_seconds,
+              })
+          )
+      );
+
+      await Promise.all(setPromises);
+      console.log('Workout session saved successfully');
+      return session;
+    } catch (error) {
+      console.error('Error saving workout session:', error);
+      return null;
     }
-    Alert.alert('Start Workout', 'Starting workout session coming soon!');
+  };
+
+  const handleStart = async () => {
+    if (workout.exercises.length === 0) {
+        Alert.alert('No Exercises', 'Please add some exercises before starting the workout.');
+        return;
+    }
+    
+    // Save the workout template first
+    const savedWorkout = await saveWorkout();
+    if (savedWorkout) {
+        // Navigate to live workout session
+        navigation.navigate('LiveWorkoutSession', { 
+            workout: savedWorkout 
+        });
+    } else {
+        Alert.alert('Error', 'Failed to save workout. Please try again.');
+    }
   };
 
   // Exercise handlers
@@ -155,19 +441,100 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
 
   const handleExerciseMenu = (exercise: Exercise) => {
     Alert.alert(
-      'Exercise Options',
+      exercise.name,
       'Choose an option:',
       [
-        { text: 'Edit Rest Time', onPress: () => Alert.alert('Edit Rest Time', 'Coming soon!') },
-        { text: 'Edit Sets', onPress: () => Alert.alert('Edit Sets', 'Coming soon!') },
-        { text: 'Edit Reps', onPress: () => Alert.alert('Edit Reps', 'Coming soon!') },
+        { 
+          text: 'Edit Rest Time', 
+          onPress: () => Alert.alert('Edit Rest Time', `Current: ${exercise.duration_seconds}s\n\nEditing coming soon!`) 
+        },
+        { 
+          text: 'Edit Sets', 
+          onPress: () => Alert.alert('Edit Sets', `Current: ${exercise.sets_count} sets\n\nEditing coming soon!`) 
+        },
+        { 
+          text: 'Edit Reps', 
+          onPress: () => Alert.alert('Edit Reps', `Current: ${exercise.reps_count} reps\n\nEditing coming soon!`) 
+        },
+        { 
+          text: 'Remove Exercise', 
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Remove Exercise',
+              `Are you sure you want to remove ${exercise.name}?`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Remove', 
+                  style: 'destructive',
+                  onPress: async () => {
+                    const updatedWorkout = {
+                      ...workout,
+                      exercises: workout.exercises.filter(ex => ex.id !== exercise.id),
+                    };
+                    setWorkout(updatedWorkout);
+                    
+                    // Save to database
+                    await saveWorkout(updatedWorkout);
+                  }
+                },
+              ]
+            );
+          }
+        },
         { text: 'Cancel', style: 'cancel' },
       ]
     );
   };
 
-  const handleAddSet = (exerciseId: string) => {
-    Alert.alert('Add Set', `Adding set to exercise ${exerciseId} coming soon!`);
+  const handleAddSet = async (exerciseId: string) => {
+    const updatedWorkout = {
+      ...workout,
+      exercises: workout.exercises.map(exercise => {
+        if (exercise.id === exerciseId) {
+          const newSetNumber = exercise.sets.length + 1;
+          
+          // For new sets, try to load previous data if available
+          const loadPreviousForNewSet = async () => {
+            const originalExerciseId = exercise.original_exercise_id || exercise.id;
+            const previousSets = await loadPreviousExerciseData(originalExerciseId, newSetNumber);
+            const previousSet = previousSets.find((set: any) => set.set_number === newSetNumber);
+            
+            return {
+              id: `${exerciseId}-${newSetNumber}`, // Use the unique exercise instance ID
+              set_number: newSetNumber,
+              weight: previousSet?.weight || undefined,
+              reps: previousSet?.reps || undefined,
+              completed: false,
+              is_previous: !!previousSet,
+            };
+          };
+
+          // For now, create the set without previous data (we'll improve this in the workout session)
+          const newSet: ExerciseSet = {
+            id: `${exerciseId}-${newSetNumber}`,
+            set_number: newSetNumber,
+            weight: undefined,
+            reps: undefined,
+            completed: false,
+            is_previous: false,
+          };
+          
+          return {
+            ...exercise,
+            sets: [...exercise.sets, newSet],
+            sets_count: exercise.sets_count + 1,
+          };
+        }
+        return exercise;
+      }),
+    };
+
+    setWorkout(updatedWorkout);
+    
+    // Save to database
+    await saveWorkout(updatedWorkout);
   };
 
   // Render exercise block
@@ -177,7 +544,7 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
       <View style={styles.exerciseHeader}>
         <View style={styles.exerciseInfo}>
           <View style={[styles.exerciseThumbnail, styles.thumbnailPlaceholder]}>
-            <Ionicons name="fitness" size={20} color="#17D4D4" />
+            <Ionicons name="fitness" size={24} color="#17D4D4" />
           </View>
           <View style={styles.exerciseDetails}>
             <View style={styles.exerciseTitleRow}>
@@ -198,14 +565,12 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
             </View>
             <View style={styles.exerciseMetaRow}>
               <View style={styles.metaItem}>
-                <Ionicons name="time-outline" size={16} color="#5A5A5A" />
+                <Ionicons name="time-outline" size={16} color="#6C6C6C" />
                 <Text style={styles.metaText}>{exercise.duration_seconds || 0} secs</Text>
               </View>
-              <View style={styles.metaItem}>
-                <Text style={styles.metaText}>
-                  {exercise.sets_count} sets × {exercise.reps_count} reps
-                </Text>
-              </View>
+              <Text style={styles.metaText}>
+                {exercise.sets_count} sets x {exercise.reps_count} reps
+              </Text>
             </View>
           </View>
         </View>
@@ -235,7 +600,7 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
               <Ionicons
                 name={set.completed ? "checkmark-circle" : "ellipse-outline"}
                 size={20}
-                color={set.completed ? "#17D4D4" : "#CCCCCC"}
+                color={set.completed ? "#BFBFBF" : "#CCCCCC"}
               />
             </View>
           </View>
@@ -290,11 +655,11 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
         {/* Metadata */}
         <View style={styles.metadataRow}>
           <View style={styles.metadataItem}>
-            <Ionicons name="link-outline" size={16} color="#5A5A5A" />
+            <Ionicons name="link-outline" size={16} color="#6C6C6C" />
             <Text style={styles.metadataText}>{exerciseCount} exercises</Text>
           </View>
           <View style={styles.metadataItem}>
-            <Ionicons name="time-outline" size={16} color="#5A5A5A" />
+            <Ionicons name="time-outline" size={16} color="#6C6C6C" />
             <Text style={styles.metadataText}>{totalDuration} mins</Text>
           </View>
         </View>
@@ -305,7 +670,7 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
         {/* Add Exercise Button */}
         <TouchableOpacity style={styles.addExerciseButton} onPress={handleAddExercise}>
           <View style={styles.addExerciseIcon}>
-            <Ionicons name="add" size={24} color="#17D4D4" />
+            <Ionicons name="add" size={32} color="#17D4D4" />
           </View>
           <Text style={styles.addExerciseText}>Add Exercise</Text>
         </TouchableOpacity>
@@ -315,8 +680,14 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
       </ScrollView>
 
       {/* Floating Start Button */}
-      <TouchableOpacity style={styles.floatingStartButton} onPress={handleStart}>
-        <Text style={styles.startButtonText}>Start</Text>
+      <TouchableOpacity 
+        style={[styles.floatingStartButton, isSaving && styles.floatingStartButtonDisabled]} 
+        onPress={handleStart}
+        disabled={isSaving}
+      >
+        <Text style={styles.startButtonText}>
+          {isSaving ? 'Saving...' : 'Start'}
+        </Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -325,7 +696,7 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9F9FC',
+    backgroundColor: '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
@@ -334,7 +705,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 24,
     paddingBottom: 16,
-    backgroundColor: '#F9F9FC',
+    backgroundColor: '#FFFFFF',
   },
   headerButton: {
     padding: 4,
@@ -383,7 +754,7 @@ const styles = StyleSheet.create({
   metadataText: {
     fontSize: 14,
     fontFamily: 'Poppins-Regular',
-    color: '#5A5A5A',
+    color: '#6C6C6C',
     marginLeft: 6,
   },
   
@@ -395,18 +766,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   addExerciseIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#DFFCFD',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
   },
   addExerciseText: {
-    fontSize: 18,
-    fontFamily: 'Poppins-Medium',
-    color: '#000000',
+    fontSize: 16,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#666666',
   },
   
   // Exercise Blocks
@@ -424,9 +795,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   exerciseThumbnail: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     marginRight: 12,
   },
   thumbnailPlaceholder: {
@@ -443,7 +814,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   exerciseName: {
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: 'Poppins-SemiBold',
     color: '#000000',
     flex: 1,
@@ -477,7 +848,7 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 14,
     fontFamily: 'Poppins-Regular',
-    color: '#5A5A5A',
+    color: '#6C6C6C',
     marginLeft: 4,
   },
   
@@ -495,7 +866,7 @@ const styles = StyleSheet.create({
   columnHeader: {
     fontSize: 14,
     fontFamily: 'Poppins-Medium',
-    color: '#5A5A5A',
+    color: '#6C6C6C',
     flex: 1,
     textAlign: 'center',
   },
@@ -562,13 +933,16 @@ const styles = StyleSheet.create({
     elevation: 8, // For Android shadow
     zIndex: 1000, // Ensure it floats above everything
   },
+  floatingStartButtonDisabled: {
+    backgroundColor: '#CCCCCC',
+  },
   startButtonText: {
     fontSize: 16,
     fontFamily: 'Poppins-SemiBold',
     color: '#FFFFFF',
   },
   bottomSpacing: {
-    height: 80, // Extra space so content doesn't hide behind floating button
+    height: 120, // Extra space so content doesn't hide behind floating button + tab bar
   },
 });
 

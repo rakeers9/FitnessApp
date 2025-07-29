@@ -5,6 +5,8 @@ import { createStackNavigator } from '@react-navigation/stack';
 import MainTabNavigator from './MainTabNavigator';
 import EditWorkoutScreen from '../screens/main/EditWorkoutScreen';
 import ExerciseLibraryScreen from '../screens/main/ExerciseLibraryScreen';
+import LiveWorkoutSessionScreen from '../screens/main/LiveWorkoutSessionScreen';
+
 
 const Stack = createStackNavigator();
 
@@ -32,6 +34,13 @@ const WorkoutStack = () => {
           presentation: 'card',
         }}
       />
+      <Stack.Screen 
+        name="LiveWorkoutSession" 
+        component={LiveWorkoutSessionScreen}
+        options={{
+            presentation: 'card',
+        }}
+       />
     </Stack.Navigator>
   );
 };
