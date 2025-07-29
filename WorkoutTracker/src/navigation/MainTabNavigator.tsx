@@ -1,80 +1,107 @@
-// src/navigation/MainTabNavigator.tsx - Placeholder
+// src/navigation/MainTabNavigator.tsx
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import { supabase } from '../services/supabase';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { View, Text, StyleSheet, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+// Import screens
+import WorkoutsScreen from '../screens/main/WorkoutsScreen';
+
+const Tab = createBottomTabNavigator();
+
+// Placeholder Profile Screen (temporary)
+const ProfileScreen = () => (
+  <View style={styles.placeholderContainer}>
+    <Text style={styles.placeholderText}>Profile Screen</Text>
+    <Text style={styles.placeholderSubtext}>Coming Soon!</Text>
+  </View>
+);
 
 const MainTabNavigator = () => {
-  const handleLogout = async () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase.auth.signOut();
-              if (error) {
-                Alert.alert('Error', 'Failed to logout. Please try again.');
-              }
-              // The auth state change will automatically navigate back to login
-            } catch (error) {
-              Alert.alert('Error', 'An unexpected error occurred.');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Main App - Coming Soon!</Text>
-      <Text style={styles.subtext}>Workouts, Progress, Library, Account tabs will go here</Text>
-      
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Text style={styles.logoutButtonText}>Logout</Text>
-      </TouchableOpacity>
-    </View>
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: styles.tabBar,
+        tabBarShowLabel: false,
+        tabBarActiveTintColor: '#FFFFFF',
+        tabBarInactiveTintColor: '#FFFFFF',
+      }}
+    >
+      <Tab.Screen
+        name="Workouts"
+        component={WorkoutsScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <View style={[styles.tabIconContainer, focused && styles.activeTabIcon]}>
+              <Image
+                source={require('../../assets/home.png')}
+                style={styles.homeIcon}
+                resizeMode="contain"
+              />
+            </View>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <View style={[styles.tabIconContainer, focused && styles.activeTabIcon]}>
+              <Ionicons
+                name="person"
+                size={24}
+                color="#FFFFFF"
+              />
+            </View>
+          ),
+        }}
+      />
+    </Tab.Navigator>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  tabBar: {
+    backgroundColor: '#000000', // Dark navy background
+    height: 72,
+    paddingBottom: 8,
+    paddingTop: 16,
+    borderTopWidth: 0,
+  },
+  tabIconContainer: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+  },
+  activeTabIcon: {
+    backgroundColor: '#17D4D4', // Turquoise circle for active tab
+  },
+  homeIcon: {
+    width: 24,
+    height: 24,
+    tintColor: '#FFFFFF', // This will make the icon white to match the design
+  },
+  placeholderContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 24,
   },
-  text: {
+  placeholderText: {
     fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
+    fontFamily: 'Poppins-SemiBold',
+    color: '#192126',
+    marginBottom: 8,
   },
-  subtext: {
+  placeholderSubtext: {
     fontSize: 14,
-    color: '#666666',
-    textAlign: 'center',
-    marginBottom: 40,
-  },
-  logoutButton: {
-    backgroundColor: '#FF3B3B',
-    borderRadius: 26,
-    paddingHorizontal: 32,
-    height: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  logoutButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontFamily: 'Poppins-Regular',
+    color: '#5A5A5A',
   },
 });
 

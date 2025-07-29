@@ -20,7 +20,7 @@ import SplashScreen from './src/screens/onboarding/SplashScreen';
 import GetStartedScreen from './src/screens/onboarding/GetStartedScreen';
 import AuthStack from './src/screens/auth/AuthStack';
 import PostAuthSetupScreen from './src/screens/onboarding/PostAuthSetupScreen';
-import MainTabNavigator from './src/navigation/MainTabNavigator';
+import WorkoutStack from './src/navigation/WorkoutStack';
 
 const Stack = createStackNavigator();
 
@@ -166,7 +166,7 @@ export default function App() {
           />
         ) : (
           // Ready for main app
-          <Stack.Screen name="Main" component={MainTabNavigator} />
+          <Stack.Screen name="Main" component={WorkoutStack} />
         )}
       </Stack.Navigator>
     </NavigationContainer>
