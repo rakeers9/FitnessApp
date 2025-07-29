@@ -1,15 +1,6 @@
 // src/screens/main/LiveWorkoutSessionScreen.tsx
 
-// ADD TO NAVIGATION: src/navigation/WorkoutStack.tsx
-// Import: import LiveWorkoutSessionScreen from '../screens/main/LiveWorkoutSessionScreen';
-// Add screen: <Stack.Screen name="LiveWorkoutSession" component={LiveWorkoutSessionScreen} />
-
-// UPDATE EDITWORKOUTSCREEN: Change handleStart function to:
-// navigation.navigate('LiveWorkoutSession', { workout: workoutToSave || workout });
-
-
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -24,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
+import { useWorkoutSession } from '../../context/WorkoutSessionContext';
 
 // Types for navigation
 type LiveWorkoutSessionScreenProps = {
@@ -55,19 +47,6 @@ interface Exercise {
   muscle_groups?: string[];
 }
 
-interface WorkoutSession {
-  id?: string;
-  template_id?: string;
-  workout_name: string;
-  exercises: Exercise[];
-  start_time: Date;
-  current_exercise_index: number;
-  current_set_index: number;
-  total_duration: number; // in seconds
-  is_rest_active: boolean;
-  rest_remaining: number; // in seconds
-}
-
 const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ navigation, route }) => {
   // Get workout template from route params
   const workoutTemplate = route.params?.workout;
@@ -78,43 +57,32 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
     return null;
   }
 
-  // Workout session state
-  const [session, setSession] = useState<WorkoutSession>({
-    template_id: workoutTemplate.id,
-    workout_name: workoutTemplate.name,
-    exercises: workoutTemplate.exercises,
-    start_time: new Date(),
-    current_exercise_index: 0,
-    current_set_index: 0,
-    total_duration: 0,
-    is_rest_active: false,
-    rest_remaining: 0,
-  });
+  // Workout session context
+  const { 
+    activeSession, 
+    updateSession, 
+    isWorkoutActive, 
+    workoutTime, 
+    restTime,
+    startRestTimer,
+    endRestPeriod,
+    adjustRestTime,
+    endWorkoutSession 
+  } = useWorkoutSession();
 
-  // Timer refs and states
-  const workoutTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const restTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const [workoutTime, setWorkoutTime] = useState(0); // Total workout time in seconds
-  const [restTime, setRestTime] = useState(0); // Current rest time
-
-  // Input states for current set
+  // Local state for current set inputs
   const [currentWeight, setCurrentWeight] = useState('');
   const [currentReps, setCurrentReps] = useState('');
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
-  // Initialize workout session
+  // Initialize workout session in database
   useEffect(() => {
-    startWorkoutSession();
-    return () => {
-      // Clean up timers when component unmounts
-      if (workoutTimerRef.current) clearInterval(workoutTimerRef.current);
-      if (restTimerRef.current) clearInterval(restTimerRef.current);
-    };
+    createWorkoutSessionInDB();
   }, []);
 
-  // Start the workout session
-  const startWorkoutSession = async () => {
+  // Create workout session record in database
+  const createWorkoutSessionInDB = async () => {
     try {
-      // Create workout session in database
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -137,17 +105,10 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
         return;
       }
 
-      // Update session with database ID
-      setSession(prev => ({ ...prev, id: sessionData.id }));
-
-      // Start workout timer (updates every second)
-      workoutTimerRef.current = setInterval(() => {
-        setWorkoutTime(prev => prev + 1);
-      }, 1000);
-
-      console.log('Workout session started:', sessionData.id);
+      setSessionId(sessionData.id);
+      console.log('Workout session created in database:', sessionData.id);
     } catch (error) {
-      console.error('Error starting workout session:', error);
+      console.error('Error creating workout session:', error);
     }
   };
 
@@ -160,13 +121,14 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
 
   // Get current exercise and set
   const getCurrentExercise = (): Exercise | null => {
-    return session.exercises[session.current_exercise_index] || null;
+    if (!activeSession) return null;
+    return activeSession.exercises[activeSession.current_exercise_index] || null;
   };
 
   const getCurrentSet = (): ExerciseSet | null => {
     const currentExercise = getCurrentExercise();
-    if (!currentExercise) return null;
-    return currentExercise.sets[session.current_set_index] || null;
+    if (!currentExercise || !activeSession) return null;
+    return currentExercise.sets[activeSession.current_set_index] || null;
   };
 
   // Handle set completion
@@ -182,15 +144,15 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
     const currentExercise = getCurrentExercise();
     const currentSet = getCurrentSet();
     
-    if (!currentExercise || !currentSet) return;
+    if (!currentExercise || !currentSet || !activeSession) return;
 
     try {
       // Save set to database
-      if (session.id) {
+      if (sessionId) {
         const { error } = await supabase
           .from('workout_sets')
           .insert({
-            session_id: session.id,
+            session_id: sessionId,
             exercise_id: currentExercise.original_exercise_id || currentExercise.id,
             set_number: currentSet.set_number,
             weight: weight,
@@ -203,47 +165,52 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
         }
       }
 
-      // Update session state
-      setSession(prev => {
-        const updatedExercises = [...prev.exercises];
-        const exerciseIndex = prev.current_exercise_index;
-        const setIndex = prev.current_set_index;
-        
-        // Mark current set as completed and update with current session data
-        updatedExercises[exerciseIndex].sets[setIndex] = {
-          ...updatedExercises[exerciseIndex].sets[setIndex],
-          weight: weight,
-          reps: reps,
-          completed: true,
-          is_current_session: true,
-        };
+      // Update exercise state
+      const updatedExercises = [...activeSession.exercises];
+      const exerciseIndex = activeSession.current_exercise_index;
+      const setIndex = activeSession.current_set_index;
+      
+      // Mark current set as completed and update with current session data
+      updatedExercises[exerciseIndex].sets[setIndex] = {
+        ...updatedExercises[exerciseIndex].sets[setIndex],
+        weight: weight,
+        reps: reps,
+        completed: true,
+        is_current_session: true,
+      };
 
-        // Find next set
-        let nextExerciseIndex = exerciseIndex;
-        let nextSetIndex = setIndex + 1;
-        
-        // If we've completed all sets for current exercise, move to next exercise
-        if (nextSetIndex >= updatedExercises[exerciseIndex].sets.length) {
-          nextExerciseIndex = exerciseIndex + 1;
-          nextSetIndex = 0;
-        }
+      // Find next set
+      let nextExerciseIndex = exerciseIndex;
+      let nextSetIndex = setIndex + 1;
+      
+      // If we've completed all sets for current exercise, move to next exercise
+      if (nextSetIndex >= updatedExercises[exerciseIndex].sets.length) {
+        nextExerciseIndex = exerciseIndex + 1;
+        nextSetIndex = 0;
+      }
 
-        return {
-          ...prev,
-          exercises: updatedExercises,
-          current_exercise_index: nextExerciseIndex,
-          current_set_index: nextSetIndex,
-          is_rest_active: true,
-          rest_remaining: currentExercise.duration_seconds || 60,
-        };
+      // Update session with new exercise state
+      updateSession({
+        exercises: updatedExercises,
+        current_exercise_index: nextExerciseIndex,
+        current_set_index: nextSetIndex,
       });
 
       // Clear input fields
       setCurrentWeight('');
       setCurrentReps('');
 
-      // Start rest timer
-      startRestTimer(currentExercise.duration_seconds || 60);
+      // Start rest timer if not on last set
+      if (nextExerciseIndex < updatedExercises.length) {
+        startRestTimer(currentExercise.duration_seconds || 60);
+      } else {
+        // Workout completed
+        Alert.alert(
+          'Workout Complete!',
+          'Great job! You\'ve completed all exercises.',
+          [{ text: 'Finish', onPress: handleEndWorkout }]
+        );
+      }
 
     } catch (error) {
       console.error('Error completing set:', error);
@@ -251,54 +218,8 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
     }
   };
 
-  // Start rest timer
-  const startRestTimer = (restDuration: number) => {
-    setRestTime(restDuration);
-    
-    restTimerRef.current = setInterval(() => {
-      setRestTime(prev => {
-        if (prev <= 1) {
-          // Rest timer finished
-          endRestPeriod();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  // End rest period
-  const endRestPeriod = () => {
-    if (restTimerRef.current) {
-      clearInterval(restTimerRef.current);
-      restTimerRef.current = null;
-    }
-    
-    setSession(prev => ({
-      ...prev,
-      is_rest_active: false,
-      rest_remaining: 0,
-    }));
-    
-    setRestTime(0);
-  };
-
-  // Skip rest period
-  const skipRest = () => {
-    endRestPeriod();
-  };
-
-  // Adjust rest time
-  const adjustRestTime = (seconds: number) => {
-    setRestTime(prev => Math.max(0, prev + seconds));
-    setSession(prev => ({
-      ...prev,
-      rest_remaining: Math.max(0, prev.rest_remaining + seconds),
-    }));
-  };
-
   // Handle workout end
-  const endWorkout = async () => {
+  const handleEndWorkout = async () => {
     Alert.alert(
       'End Workout',
       'Are you sure you want to end this workout?',
@@ -307,10 +228,7 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
         { 
           text: 'End Workout',
           style: 'destructive',
-          onPress: async () => {
-            await finishWorkoutSession();
-            navigation.goBack();
-          }
+          onPress: finishWorkoutSession
         },
       ]
     );
@@ -319,14 +237,10 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
   // Finish workout session
   const finishWorkoutSession = async () => {
     try {
-      if (!session.id) return;
-
-      // Stop timers
-      if (workoutTimerRef.current) clearInterval(workoutTimerRef.current);
-      if (restTimerRef.current) clearInterval(restTimerRef.current);
+      if (!sessionId || !activeSession) return;
 
       // Calculate total volume
-      const totalVolume = session.exercises.reduce((total, exercise) => {
+      const totalVolume = activeSession.exercises.reduce((total, exercise) => {
         return total + exercise.sets.reduce((exerciseTotal, set) => {
           if (set.completed && set.weight && set.reps) {
             return exerciseTotal + (set.weight * set.reps);
@@ -343,13 +257,19 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
           duration_minutes: Math.ceil(workoutTime / 60),
           total_volume: totalVolume,
         })
-        .eq('id', session.id);
+        .eq('id', sessionId);
 
       if (error) {
         console.error('Error finishing workout session:', error);
       }
 
       console.log('Workout session completed successfully');
+      
+      // End session in context
+      endWorkoutSession();
+      
+      // Navigate back
+      navigation.goBack();
     } catch (error) {
       console.error('Error finishing workout session:', error);
     }
@@ -365,7 +285,7 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
         { 
           text: 'End Workout',
           style: 'destructive',
-          onPress: () => endWorkout()
+          onPress: handleEndWorkout
         },
       ]
     );
@@ -376,9 +296,24 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
     Alert.alert('Settings', 'Workout settings coming soon!');
   };
 
+  // Handle add exercise
+  const handleAddExercise = () => {
+    navigation.navigate('ExerciseLibrary', {
+      onExercisesSelected: (selectedExercises: any[]) => {
+        // Add exercises to current session
+        Alert.alert('Add Exercise', 'Adding exercises during workout coming soon!');
+      }
+    });
+  };
+
+  // Skip rest period
+  const skipRest = () => {
+    endRestPeriod();
+  };
+
   // Render exercise block
   const renderExercise = (exercise: Exercise, exerciseIndex: number) => {
-    const isCurrentExercise = exerciseIndex === session.current_exercise_index;
+    const isCurrentExercise = exerciseIndex === (activeSession?.current_exercise_index || 0);
     
     return (
       <View key={exercise.id} style={styles.exerciseBlock}>
@@ -424,7 +359,7 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
 
           {/* Set Rows */}
           {exercise.sets.map((set, setIndex) => {
-            const isCurrentSet = isCurrentExercise && setIndex === session.current_set_index;
+            const isCurrentSet = isCurrentExercise && setIndex === (activeSession?.current_set_index || 0);
             const isCompletedInSession = set.completed && set.is_current_session;
             const isPreviousData = set.is_previous && !set.is_current_session;
             
@@ -461,13 +396,19 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
               </View>
             );
           })}
+
+          {/* Add Set Button */}
+          <TouchableOpacity style={styles.addSetButton}>
+            <Ionicons name="add" size={14} color="#7A7A7A" />
+            <Text style={styles.addSetText}>Add Set</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Current Set Input (only show for current exercise) */}
-        {isCurrentExercise && session.current_set_index < exercise.sets.length && (
+        {isCurrentExercise && (activeSession?.current_set_index || 0) < exercise.sets.length && !activeSession?.is_rest_active && (
           <View style={styles.currentSetInput}>
             <Text style={styles.currentSetLabel}>
-              Set {session.current_set_index + 1}
+              Set {(activeSession?.current_set_index || 0) + 1}
             </Text>
             <View style={styles.inputRow}>
               <TextInput
@@ -499,6 +440,22 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
     );
   };
 
+  if (!activeSession) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>No active workout session</Text>
+          <TouchableOpacity 
+            style={styles.errorButton} 
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.errorButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -514,14 +471,14 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         {/* Workout Title */}
         <View style={styles.titleSection}>
-          <Text style={styles.workoutTitle}>{session.workout_name}</Text>
+          <Text style={styles.workoutTitle}>{activeSession.workout_name}</Text>
         </View>
 
         {/* Metadata */}
         <View style={styles.metadataRow}>
           <View style={styles.metadataItem}>
             <Ionicons name="link-outline" size={16} color="#6C6C6C" />
-            <Text style={styles.metadataText}>{session.exercises.length} exercises</Text>
+            <Text style={styles.metadataText}>{activeSession.exercises.length} exercises</Text>
           </View>
           <View style={styles.metadataItem}>
             <Ionicons name="time-outline" size={16} color="#6C6C6C" />
@@ -530,7 +487,15 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
         </View>
 
         {/* Exercises List */}
-        {session.exercises.map((exercise, index) => renderExercise(exercise, index))}
+        {activeSession.exercises.map((exercise, index) => renderExercise(exercise, index))}
+
+        {/* Add Exercise Button */}
+        <TouchableOpacity style={styles.addExerciseButton} onPress={handleAddExercise}>
+          <View style={styles.addExerciseIcon}>
+            <Ionicons name="add" size={32} color="#17D4D4" />
+          </View>
+          <Text style={styles.addExerciseText}>Add Exercise</Text>
+        </TouchableOpacity>
 
         {/* Bottom spacing */}
         <View style={styles.bottomSpacing} />
@@ -539,35 +504,33 @@ const LiveWorkoutSessionScreen: React.FC<LiveWorkoutSessionScreenProps> = ({ nav
       {/* Bottom Timer & End Button */}
       <View style={styles.bottomContainer}>
         <View style={styles.timerContainer}>
-          {session.is_rest_active ? (
+          {activeSession.is_rest_active ? (
             // Rest Timer
-            <>
-              <View style={styles.restTimerContent}>
-                <Text style={styles.timerText}>{formatTime(restTime)}</Text>
-                <TouchableOpacity 
-                  style={styles.restAdjustButton} 
-                  onPress={() => adjustRestTime(-15)}
-                >
-                  <Text style={styles.restAdjustText}>-15s</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.restAdjustButton} 
-                  onPress={() => adjustRestTime(15)}
-                >
-                  <Text style={styles.restAdjustText}>+15s</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.skipButton} onPress={skipRest}>
-                  <Text style={styles.skipButtonText}>Skip</Text>
-                </TouchableOpacity>
-              </View>
-            </>
+            <View style={styles.restTimerContent}>
+              <Text style={styles.timerText}>{formatTime(restTime)}</Text>
+              <TouchableOpacity 
+                style={styles.restAdjustButton} 
+                onPress={() => adjustRestTime(-15)}
+              >
+                <Text style={styles.restAdjustText}>-15s</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.restAdjustButton} 
+                onPress={() => adjustRestTime(15)}
+              >
+                <Text style={styles.restAdjustText}>+15s</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.skipButton} onPress={skipRest}>
+                <Text style={styles.skipButtonText}>Skip</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             // Workout Timer + End Button
             <>
               <View style={styles.workoutTimerSection}>
                 <Text style={styles.timerText}>{formatTime(workoutTime)}</Text>
               </View>
-              <TouchableOpacity style={styles.endButton} onPress={endWorkout}>
+              <TouchableOpacity style={styles.endButton} onPress={handleEndWorkout}>
                 <Text style={styles.endButtonText}>End</Text>
               </TouchableOpacity>
             </>
@@ -756,6 +719,40 @@ const styles = StyleSheet.create({
     color: '#000000', // Black for current session data
     fontFamily: 'Poppins-SemiBold',
   },
+  addSetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  addSetText: {
+    fontSize: 14,
+    fontFamily: 'Poppins-Medium',
+    color: '#7A7A7A',
+    marginLeft: 6,
+  },
+  
+  // Add Exercise Button
+  addExerciseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 20,
+  },
+  addExerciseIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#DFFCFD',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  addExerciseText: {
+    fontSize: 16,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#6C6C6C',
+  },
   
   // Current Set Input
   currentSetInput: {
@@ -871,6 +868,34 @@ const styles = StyleSheet.create({
   },
   skipButtonText: {
     fontSize: 14,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#FFFFFF',
+  },
+  
+  // Error State
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  errorText: {
+    fontSize: 16,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#000000',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  errorButton: {
+    backgroundColor: '#17D4D4',
+    borderRadius: 24,
+    paddingHorizontal: 32,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorButtonText: {
+    fontSize: 16,
     fontFamily: 'Poppins-SemiBold',
     color: '#FFFFFF',
   },

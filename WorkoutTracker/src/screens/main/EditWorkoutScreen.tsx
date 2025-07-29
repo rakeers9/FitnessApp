@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
+import { useWorkoutSession } from '../../context/WorkoutSessionContext';
 
 // Types for navigation
 type EditWorkoutScreenProps = {
@@ -57,6 +58,9 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
   const workoutData = route.params?.workout || null;
   const isNewWorkout = !workoutData;
 
+  // Workout session context
+  const { isWorkoutActive, workoutTime, startWorkoutSession, endWorkoutSession } = useWorkoutSession();
+
   const [workout, setWorkout] = useState<WorkoutTemplate>({
     id: workoutData?.id,
     name: workoutData?.name || 'New Workout',
@@ -67,6 +71,13 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(workout.name);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Format time helper
+  const formatTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
 
   // Save workout to database
   const saveWorkout = async (workoutToSave?: WorkoutTemplate) => {
@@ -363,75 +374,44 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
     });
   };
 
-  // Save workout session data when workout is completed
-  const saveWorkoutSession = async (completedWorkout: WorkoutTemplate) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      // Create workout session record
-      const { data: session, error: sessionError } = await supabase
-        .from('workout_sessions')
-        .insert({
-          user_id: user.id,
-          template_id: completedWorkout.id,
-          workout_name: completedWorkout.name,
-          duration_minutes: completedWorkout.estimated_duration,
-          total_volume: 0, // TODO: Calculate total volume
-          date_performed: new Date().toISOString().split('T')[0],
-          completed_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (sessionError) {
-        console.error('Error creating workout session:', sessionError);
-        return null;
-      }
-
-      // Save individual sets for each exercise
-      const setPromises = completedWorkout.exercises.flatMap(exercise => 
-        exercise.sets
-          .filter(set => set.completed && (set.weight || set.reps)) // Only save completed sets with data
-          .map(set => 
-            supabase
-              .from('workout_sets')
-              .insert({
-                session_id: session.id,
-                exercise_id: exercise.original_exercise_id || exercise.id, // Use original exercise ID for tracking
-                set_number: set.set_number,
-                weight: set.weight,
-                reps: set.reps,
-                rest_seconds: exercise.duration_seconds,
-              })
-          )
-      );
-
-      await Promise.all(setPromises);
-      console.log('Workout session saved successfully');
-      return session;
-    } catch (error) {
-      console.error('Error saving workout session:', error);
-      return null;
-    }
-  };
-
   const handleStart = async () => {
     if (workout.exercises.length === 0) {
-        Alert.alert('No Exercises', 'Please add some exercises before starting the workout.');
-        return;
+      Alert.alert('No Exercises', 'Please add some exercises before starting the workout.');
+      return;
     }
     
     // Save the workout template first
     const savedWorkout = await saveWorkout();
     if (savedWorkout) {
-        // Navigate to live workout session
-        navigation.navigate('LiveWorkoutSession', { 
-            workout: savedWorkout 
-        });
+      // Start workout session in context
+      startWorkoutSession(savedWorkout);
+      
+      // Navigate to live workout session
+      navigation.navigate('LiveWorkoutSession', { 
+        workout: savedWorkout 
+      });
     } else {
-        Alert.alert('Error', 'Failed to save workout. Please try again.');
+      Alert.alert('Error', 'Failed to save workout. Please try again.');
     }
+  };
+
+  // Handle ending workout from edit screen
+  const handleEndWorkout = () => {
+    Alert.alert(
+      'End Workout',
+      'Are you sure you want to end the active workout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'End Workout',
+          style: 'destructive',
+          onPress: () => {
+            endWorkoutSession();
+            Alert.alert('Workout Ended', 'Your workout has been saved.');
+          }
+        },
+      ]
+    );
   };
 
   // Exercise handlers
@@ -679,16 +659,29 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
         <View style={styles.bottomSpacing} />
       </ScrollView>
 
-      {/* Floating Start Button */}
-      <TouchableOpacity 
-        style={[styles.floatingStartButton, isSaving && styles.floatingStartButtonDisabled]} 
-        onPress={handleStart}
-        disabled={isSaving}
-      >
-        <Text style={styles.startButtonText}>
-          {isSaving ? 'Saving...' : 'Start'}
-        </Text>
-      </TouchableOpacity>
+      {/* Floating Start/End Button with Timer */}
+      {isWorkoutActive ? (
+        // Show End button with timer when workout is active
+        <View style={styles.floatingWorkoutControls}>
+          <View style={styles.workoutTimerSection}>
+            <Text style={styles.timerText}>{formatTime(workoutTime)}</Text>
+          </View>
+          <TouchableOpacity style={styles.endButton} onPress={handleEndWorkout}>
+            <Text style={styles.endButtonText}>End</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        // Show Start button when no workout is active
+        <TouchableOpacity 
+          style={[styles.floatingStartButton, isSaving && styles.floatingStartButtonDisabled]} 
+          onPress={handleStart}
+          disabled={isSaving}
+        >
+          <Text style={styles.startButtonText}>
+            {isSaving ? 'Saving...' : 'Start'}
+          </Text>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 };
@@ -912,7 +905,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   
-  // Floating Start Button
+  // Floating Start Button (Original)
   floatingStartButton: {
     position: 'absolute',
     bottom: 30,
@@ -930,8 +923,8 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.3,
     shadowRadius: 4,
-    elevation: 8, // For Android shadow
-    zIndex: 1000, // Ensure it floats above everything
+    elevation: 8,
+    zIndex: 1000,
   },
   floatingStartButtonDisabled: {
     backgroundColor: '#CCCCCC',
@@ -941,6 +934,53 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-SemiBold',
     color: '#FFFFFF',
   },
+  
+  // Floating Workout Controls (New)
+  floatingWorkoutControls: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
+    zIndex: 1000,
+  },
+  workoutTimerSection: {
+    backgroundColor: '#0F1113',
+    borderTopLeftRadius: 24,
+    borderBottomLeftRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    height: 48,
+    justifyContent: 'center',
+  },
+  timerText: {
+    fontSize: 16,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#FFFFFF',
+  },
+  endButton: {
+    backgroundColor: '#17D4D4',
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 24,
+    paddingHorizontal: 24,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  endButtonText: {
+    fontSize: 16,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#FFFFFF',
+  },
+  
   bottomSpacing: {
     height: 120, // Extra space so content doesn't hide behind floating button + tab bar
   },
