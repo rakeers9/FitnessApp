@@ -6,13 +6,16 @@ import MainTabNavigator from './MainTabNavigator';
 import EditWorkoutScreen from '../screens/main/EditWorkoutScreen';
 import ExerciseLibraryScreen from '../screens/main/ExerciseLibraryScreen';
 import ReorderExercisesScreen from '../screens/main/ReorderExercisesScreen';
+import ExerciseCommentsScreen from '../screens/main/ExerciseCommentsScreen';
 import { WorkoutSessionProvider } from '../context/WorkoutSessionContext';
 
+// Define the param list type
 export type WorkoutStackParamList = {
   MainTabs: undefined;
   EditWorkout: { workout?: any };
   ExerciseLibrary: { onExercisesSelected: (exercises: any[]) => void };
   ReorderExercises: { workout: any; onReorder: (exercises: any[]) => void };
+  ExerciseComments: { exerciseId: string; exerciseName: string };
 };
 
 const Stack = createStackNavigator<WorkoutStackParamList>();
@@ -47,6 +50,14 @@ const WorkoutStack = () => {
           component={ReorderExercisesScreen}
           options={{
             presentation: 'card',
+          }}
+        />
+        <Stack.Screen 
+          name="ExerciseComments" 
+          component={ExerciseCommentsScreen}
+          options={{
+            presentation: 'modal',
+            cardStyle: { backgroundColor: 'transparent' },
           }}
         />
       </Stack.Navigator>

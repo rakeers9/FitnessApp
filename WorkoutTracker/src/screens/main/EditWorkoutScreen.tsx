@@ -19,6 +19,8 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 import { useWorkoutSession } from '../../context/WorkoutSessionContext';
+import EditExerciseModal from '../../components/EditExerciseModal';
+import ScheduleWorkoutModal from '../../components/ScheduleWorkoutModal';
 
 // Types for navigation
 type EditWorkoutScreenProps = {
@@ -57,6 +59,7 @@ interface WorkoutTemplate {
   name: string;
   exercises: Exercise[];
   estimated_duration?: number;
+  scheduled_days?: string[];
 }
 
 const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route }) => {
@@ -83,6 +86,7 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
     name: workoutData?.name || 'New Workout',
     exercises: workoutData?.exercises || [],
     estimated_duration: workoutData?.estimated_duration || 0,
+    scheduled_days: workoutData?.scheduled_days || [],
   });
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -96,6 +100,19 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
   
   // State for active set (which set is currently being worked on)
   const [activeSetId, setActiveSetId] = useState<string | null>(null);
+
+  // New state for modals and scheduling
+  const [showEditExerciseModal, setShowEditExerciseModal] = useState(false);
+  const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduledDays, setScheduledDays] = useState<string[]>([]);
+
+  // Load scheduled days when workout loads
+  useEffect(() => {
+    if (workoutData && workoutData.scheduled_days) {
+      setScheduledDays(workoutData.scheduled_days);
+    }
+  }, [workoutData]);
 
   // Format time helper
   const formatTime = (seconds: number): string => {
@@ -295,12 +312,13 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
       // Start workout session in context
       startWorkoutSession(savedWorkout);
 
+      // Set 12-hour auto-end timer
       setTimeout(async () => {
-      console.log('Auto-ending workout after 12 hours');
-      // Same process as manual end button
-      await finishWorkoutSession();
-      endWorkoutSession();
-      setShowWorkoutComplete(true);
+        console.log('Auto-ending workout after 12 hours');
+        // Same process as manual end button
+        await finishWorkoutSession();
+        endWorkoutSession();
+        setShowWorkoutComplete(true);
       }, 12 * 60 * 60 * 1000); // 12 hours in milliseconds
       
       console.log('Workout auto-started successfully');
@@ -342,6 +360,7 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
         name: workoutWithInputs.name,
         description: `${workoutWithInputs.exercises.length} exercises`,
         exercises: exercisesForDB,
+        scheduled_days: scheduledDays,
         is_active: true,
         updated_at: new Date().toISOString(),
       };
@@ -476,6 +495,7 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
           exercises: updatedExercises,
         });
 
+        // Always start rest timer after completing a set (removed auto-end logic)
         startRestTimer(exercise.duration_seconds || 60);
       }
 
@@ -506,82 +526,82 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
   // Enhanced loadPreviousExerciseData function - Fixed to get most recent data per set number
   const loadPreviousExerciseData = async (originalExerciseId: string, setsCount: number) => {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
         console.log('No user found for previous data loading');
         return [];
-        }
+      }
 
-        console.log(`Looking for previous data for exercise: ${originalExerciseId}, expecting ${setsCount} sets`);
+      console.log(`Looking for previous data for exercise: ${originalExerciseId}, expecting ${setsCount} sets`);
 
-        // Get all completed workout sessions for this user
-        const { data: completedSessions, error: sessionError } = await supabase
+      // Get all completed workout sessions for this user
+      const { data: completedSessions, error: sessionError } = await supabase
         .from('workout_sessions')
         .select('id, workout_name, completed_at, created_at')
         .eq('user_id', user.id)
         .not('completed_at', 'is', null) // Only completed workouts
         .order('completed_at', { ascending: false });
 
-        if (sessionError) {
+      if (sessionError) {
         console.error('Error fetching sessions:', sessionError);
         return [];
-        }
+      }
 
-        if (!completedSessions || completedSessions.length === 0) {
+      if (!completedSessions || completedSessions.length === 0) {
         console.log('No completed sessions found');
         return [];
-        }
+      }
 
-        console.log(`Found ${completedSessions.length} completed sessions`);
+      console.log(`Found ${completedSessions.length} completed sessions`);
 
-        // Get all workout sets for this exercise across ALL completed sessions
-        const { data: allSets, error: setsError } = await supabase
+      // Get all workout sets for this exercise across ALL completed sessions
+      const { data: allSets, error: setsError } = await supabase
         .from('workout_sets')
         .select('session_id, set_number, weight, reps, created_at')
         .eq('exercise_id', originalExerciseId)
         .in('session_id', completedSessions.map(s => s.id))
         .order('created_at', { ascending: false }); // Most recent first
 
-        if (setsError) {
+      if (setsError) {
         console.error('Error fetching workout sets:', setsError);
         return [];
-        }
+      }
 
-        if (!allSets || allSets.length === 0) {
+      if (!allSets || allSets.length === 0) {
         console.log(`No previous sets found for exercise ${originalExerciseId}`);
         return [];
-        }
+      }
 
-        console.log(`Found ${allSets.length} total sets across all sessions for this exercise`);
+      console.log(`Found ${allSets.length} total sets across all sessions for this exercise`);
 
-        // For each set number (1 to setsCount), find the most recent logged value
-        const previousSets = [];
-        for (let setNumber = 1; setNumber <= setsCount; setNumber++) {
+      // For each set number (1 to setsCount), find the most recent logged value
+      const previousSets = [];
+      for (let setNumber = 1; setNumber <= setsCount; setNumber++) {
         // Filter sets for this specific set number
         const setsForThisNumber = allSets.filter(set => set.set_number === setNumber);
         
         if (setsForThisNumber.length > 0) {
-            // Take the most recent set for this set number (already ordered by created_at desc)
-            const mostRecentSet = setsForThisNumber[0];
-            previousSets.push({
+          // Take the most recent set for this set number (already ordered by created_at desc)
+          const mostRecentSet = setsForThisNumber[0];
+          previousSets.push({
             set_number: setNumber,
             weight: mostRecentSet.weight,
             reps: mostRecentSet.reps,
             session_date: mostRecentSet.created_at, // For debugging
-            });
-            
-            console.log(`Set ${setNumber}: Found previous data - ${mostRecentSet.weight}kg x ${mostRecentSet.reps} reps`);
+          });
+          
+          console.log(`Set ${setNumber}: Found previous data - ${mostRecentSet.weight}kg x ${mostRecentSet.reps} reps`);
         } else {
-            console.log(`Set ${setNumber}: No previous data found`);
+          console.log(`Set ${setNumber}: No previous data found`);
         }
-        }
+      }
 
-        console.log(`Returning ${previousSets.length} sets with previous data`);
-        return previousSets;
+      console.log(`Returning ${previousSets.length} sets with previous data`);
+      return previousSets;
 
     } catch (error) {
-        console.error('Error loading previous exercise data:', error);
-        return [];
+      console.error('Error loading previous exercise data:', error);
+      return [];
     }
   };
 
@@ -648,6 +668,11 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
             exercises: transformedExercises,
             estimated_duration: Math.ceil(transformedExercises.length * 5),
           }));
+
+          // Load scheduled days
+          if (data.scheduled_days) {
+            setScheduledDays(data.scheduled_days);
+          }
 
           // Enhanced debug log to show what data was loaded
           console.log('Loaded workout with exercise details:');
@@ -716,7 +741,7 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
     navigation.goBack();
   };
 
-  // Updated settings handler with reorder option
+  // Updated settings handler with new options
   const handleSettings = () => {
     if (workout.exercises.length === 0) {
       Alert.alert('No Exercises', 'Add some exercises first to access workout settings.');
@@ -732,16 +757,72 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
           onPress: handleReorderExercises
         },
         { 
-          text: 'Workout Notes', 
-          onPress: () => Alert.alert('Workout Notes', 'Coming soon!') 
+          text: 'Schedule Workout', 
+          onPress: () => setShowScheduleModal(true)
         },
         { 
-          text: 'Schedule Workout', 
-          onPress: () => Alert.alert('Schedule', 'Coming soon!') 
+          text: 'Delete Workout', 
+          style: 'destructive',
+          onPress: handleDeleteWorkout
         },
         { text: 'Cancel', style: 'cancel' },
       ]
     );
+  };
+
+  // Handle workout deletion
+  const handleDeleteWorkout = () => {
+    if (!workout.id) {
+      navigation.goBack();
+      return;
+    }
+
+    Alert.alert(
+      'Delete Workout',
+      `Are you sure you want to delete "${workout.name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('workout_templates')
+                .update({ is_active: false })
+                .eq('id', workout.id);
+
+              if (error) {
+                Alert.alert('Error', 'Failed to delete workout. Please try again.');
+                return;
+              }
+
+              Alert.alert('Success', 'Workout deleted successfully', [
+                { text: 'OK', onPress: () => navigation.navigate('MainTabs', { screen: 'Workouts' }) }
+              ]);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete workout. Please try again.');
+            }
+          }
+        },
+      ]
+    );
+  };
+
+  // Handle schedule saving
+  const handleScheduleSave = async (selectedDays: string[]) => {
+    setScheduledDays(selectedDays);
+    
+    // Update the workout object
+    const updatedWorkout = {
+      ...workout,
+      scheduled_days: selectedDays,
+    };
+    
+    setWorkout(updatedWorkout);
+    
+    // Save to database
+    await saveWorkout(updatedWorkout);
   };
 
   // Handle navigation to ReorderExercisesScreen
@@ -907,7 +988,10 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
 
   // Exercise handlers
   const handleExerciseComments = (exercise: Exercise) => {
-    Alert.alert('Comments', `Comments for ${exercise.name} coming soon!`);
+    navigation.navigate('ExerciseComments', {
+      exerciseId: exercise.original_exercise_id || exercise.id,
+      exerciseName: exercise.name,
+    });
   };
 
   const handleExerciseMenu = (exercise: Exercise) => {
@@ -916,16 +1000,11 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
       'Choose an option:',
       [
         { 
-          text: 'Edit Rest Time', 
-          onPress: () => Alert.alert('Edit Rest Time', `Current: ${exercise.duration_seconds}s\n\nEditing coming soon!`) 
-        },
-        { 
-          text: 'Edit Sets', 
-          onPress: () => Alert.alert('Edit Sets', `Current: ${exercise.sets_count} sets\n\nEditing coming soon!`) 
-        },
-        { 
-          text: 'Edit Reps', 
-          onPress: () => Alert.alert('Edit Reps', `Current: ${exercise.reps_count} reps\n\nEditing coming soon!`) 
+          text: 'Edit Exercise', 
+          onPress: () => {
+            setEditingExercise(exercise);
+            setShowEditExerciseModal(true);
+          }
         },
         { 
           text: 'Remove Exercise', 
@@ -957,6 +1036,57 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
         { text: 'Cancel', style: 'cancel' },
       ]
     );
+  };
+
+  // Handle exercise editing
+  const handleEditExercise = (exerciseId: string, updates: {
+    duration_seconds: number;
+    sets_count: number;
+    reps_count: number;
+  }) => {
+    const updatedWorkout = {
+      ...workout,
+      exercises: workout.exercises.map(exercise => {
+        if (exercise.id === exerciseId) {
+          // Update sets array if sets count changed
+          let updatedSets = [...exercise.sets];
+          
+          if (updates.sets_count !== exercise.sets_count) {
+            if (updates.sets_count > exercise.sets_count) {
+              // Add new sets
+              for (let i = exercise.sets_count + 1; i <= updates.sets_count; i++) {
+                updatedSets.push({
+                  id: `${exerciseId}-${i}`,
+                  set_number: i,
+                  weight: undefined,
+                  reps: undefined,
+                  completed: false,
+                  is_previous: false,
+                  is_current_session: false,
+                  original_previous_weight: undefined,
+                  original_previous_reps: undefined,
+                });
+              }
+            } else {
+              // Remove excess sets
+              updatedSets = updatedSets.slice(0, updates.sets_count);
+            }
+          }
+          
+          return {
+            ...exercise,
+            duration_seconds: updates.duration_seconds,
+            sets_count: updates.sets_count,
+            reps_count: updates.reps_count,
+            sets: updatedSets,
+          };
+        }
+        return exercise;
+      }),
+    };
+
+    setWorkout(updatedWorkout);
+    saveWorkout(updatedWorkout);
   };
 
   const handleAddSet = async (exerciseId: string) => {
@@ -997,6 +1127,24 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
   // Skip rest period with auto-advance
   const skipRest = () => {
     handleRestEnd();
+  };
+
+  // Function to format scheduled days for display
+  const formatScheduledDays = (days: string[]): string => {
+    if (days.length === 0) return 'Any Day';
+    if (days.length === 7) return 'Every Day';
+    
+    const dayAbbreviations: { [key: string]: string } = {
+      'Monday': 'Mon',
+      'Tuesday': 'Tue', 
+      'Wednesday': 'Wed',
+      'Thursday': 'Thu',
+      'Friday': 'Fri',
+      'Saturday': 'Sat',
+      'Sunday': 'Sun',
+    };
+    
+    return days.map(day => dayAbbreviations[day] || day).join(', ');
   };
 
   // Render exercise block (original version, no drag and drop)
@@ -1145,20 +1293,23 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
 
   return (
     <SafeAreaView style={styles.container}>
-        <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         {/* Header - Now scrolls with content */}
         <View style={styles.header}>
-            <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
+          <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
             <Ionicons name="chevron-back" size={24} color="#000000" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton} onPress={handleSettings}>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerButton} onPress={handleSettings}>
             <Ionicons name="settings-outline" size={24} color="#000000" />
-            </TouchableOpacity>
+          </TouchableOpacity>
         </View>
 
-      {/* <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}> */}
         {/* Workout Title */}
         <View style={styles.titleSection}>
+          {/* Scheduled Days */}
+          <Text style={styles.scheduledDays}>{formatScheduledDays(scheduledDays)}</Text>
+          
+          {/* Title */}
           {isEditingTitle ? (
             <View style={styles.titleEditContainer}>
               <TextInput
@@ -1208,41 +1359,41 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
       {/* Rest Timer (Original Design) */}
       {isWorkoutActive && activeSession?.is_rest_active && (
         <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.keyboardAvoidingView}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardAvoidingView}
         >
-        <View style={styles.restTimerOverlay}>
-          <View style={styles.restTimerContainer}>
-            {/* Skip Button (Floating Above) */}
-            <TouchableOpacity style={styles.skipButtonTop} onPress={skipRest}>
-              <Text style={styles.skipButtonTopText}>Skip</Text>
-            </TouchableOpacity>
-            
-            {/* Control Bar */}
-            <View style={styles.restControlBar}>
-              {/* -15secs Button */}
-              <TouchableOpacity 
-                style={styles.restControlButton}
-                onPress={() => adjustRestTime(-15)}
-              >
-                <Text style={styles.restControlButtonText}>-15secs</Text>
+          <View style={styles.restTimerOverlay}>
+            <View style={styles.restTimerContainer}>
+              {/* Skip Button (Floating Above) */}
+              <TouchableOpacity style={styles.skipButtonTop} onPress={skipRest}>
+                <Text style={styles.skipButtonTopText}>Skip</Text>
               </TouchableOpacity>
               
-              {/* Timer Display (Overlaid) */}
-              <View style={styles.restTimerDisplay}>
-                <Text style={styles.restTimerText}>{formatTime(restTime)}</Text>
+              {/* Control Bar */}
+              <View style={styles.restControlBar}>
+                {/* -15secs Button */}
+                <TouchableOpacity 
+                  style={styles.restControlButton}
+                  onPress={() => adjustRestTime(-15)}
+                >
+                  <Text style={styles.restControlButtonText}>-15secs</Text>
+                </TouchableOpacity>
+                
+                {/* Timer Display (Overlaid) */}
+                <View style={styles.restTimerDisplay}>
+                  <Text style={styles.restTimerText}>{formatTime(restTime)}</Text>
+                </View>
+                
+                {/* +15secs Button */}
+                <TouchableOpacity 
+                  style={styles.restControlButton}
+                  onPress={() => adjustRestTime(15)}
+                >
+                  <Text style={styles.restControlButtonText}>+15secs</Text>
+                </TouchableOpacity>
               </View>
-              
-              {/* +15secs Button */}
-              <TouchableOpacity 
-                style={styles.restControlButton}
-                onPress={() => adjustRestTime(15)}
-              >
-                <Text style={styles.restControlButtonText}>+15secs</Text>
-              </TouchableOpacity>
             </View>
           </View>
-        </View>
         </KeyboardAvoidingView>
       )}
 
@@ -1297,6 +1448,26 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
           </View>
         </View>
       </Modal>
+
+      {/* Edit Exercise Modal */}
+      <EditExerciseModal
+        visible={showEditExerciseModal}
+        exercise={editingExercise}
+        onClose={() => {
+          setShowEditExerciseModal(false);
+          setEditingExercise(null);
+        }}
+        onSave={handleEditExercise}
+      />
+
+      {/* Schedule Workout Modal */}
+      <ScheduleWorkoutModal
+        visible={showScheduleModal}
+        currentSchedule={scheduledDays}
+        workoutName={workout.name}
+        onClose={() => setShowScheduleModal(false)}
+        onSave={handleScheduleSave}
+      />
     </SafeAreaView>
   );
 };
@@ -1327,6 +1498,13 @@ const styles = StyleSheet.create({
   titleSection: {
     alignItems: 'center',
     marginBottom: 16,
+  },
+  scheduledDays: {
+    fontSize: 14,
+    fontFamily: 'Poppins-Regular',
+    color: '#888888',
+    textAlign: 'center',
+    marginBottom: 8,
   },
   workoutTitle: {
     fontSize: 22,
@@ -1731,11 +1909,11 @@ const styles = StyleSheet.create({
     height: 120, // Extra space so content doesn't hide behind floating button + tab bar
   },
   keyboardAvoidingView: {
-  position: 'absolute',
-  bottom: 0,
-  left: 0,
-  right: 0,
-  zIndex: 1000,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
   },
 });
 

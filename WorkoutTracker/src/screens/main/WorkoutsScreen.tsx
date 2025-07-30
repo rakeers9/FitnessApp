@@ -15,6 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
+import ScheduleWorkoutModal from '../../components/ScheduleWorkoutModal';
+
 
 // Navigation props type
 type WorkoutsScreenProps = {
@@ -27,12 +29,33 @@ interface WorkoutTemplate {
   name: string;
   duration_minutes?: number;
   exercise_count?: number;
-  thumbnail_url?: string | null; // Allow null values
+  thumbnail_url?: string | null;
+  scheduled_days?: string[];
 }
 
+const formatScheduledDays = (days: string[] = []): string => {
+  if (days.length === 0) return '';
+  if (days.length === 7) return 'Every Day';
+  
+  const dayAbbreviations: { [key: string]: string } = {
+    'Monday': 'Mon',
+    'Tuesday': 'Tue', 
+    'Wednesday': 'Wed',
+    'Thursday': 'Thu',
+    'Friday': 'Fri',
+    'Saturday': 'Sat',
+    'Sunday': 'Sun',
+  };
+  
+  return days.map(day => dayAbbreviations[day] || day).join(', ');
+};
+
+
 const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
-  const [workouts, setWorkouts] = useState<WorkoutTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
+const [workouts, setWorkouts] = useState<WorkoutTemplate[]>([]);
+const [loading, setLoading] = useState(true);
+const [showScheduleModal, setShowScheduleModal] = useState(false);
+const [schedulingWorkout, setSchedulingWorkout] = useState<WorkoutTemplate | null>(null);
 
   // Load workouts from database when screen comes into focus
   useFocusEffect(
@@ -85,6 +108,7 @@ const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
           duration_minutes: estimatedDuration,
           exercise_count: exerciseCount,
           thumbnail_url: null, // Explicitly null for now
+          scheduled_days: template.scheduled_days || [], // ADD THIS LINE
         };
       });
 
@@ -123,6 +147,13 @@ const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
       workout.name,
       'Choose an option:',
       [
+        { 
+          text: 'Schedule Workout', 
+          onPress: () => {
+            setSchedulingWorkout(workout);
+            setShowScheduleModal(true);
+          }
+        },
         { 
           text: 'Delete Workout', 
           style: 'destructive',
@@ -174,54 +205,93 @@ const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
     );
   };
 
+  const handleScheduleSave = async (selectedDays: string[]) => {
+    if (!schedulingWorkout) return;
+
+    try {
+      const { error } = await supabase
+        .from('workout_templates')
+        .update({ 
+          scheduled_days: selectedDays,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', schedulingWorkout.id);
+
+      if (error) {
+        Alert.alert('Error', 'Failed to update workout schedule. Please try again.');
+        return;
+      }
+
+      // Update local state
+      setWorkouts(prev => prev.map(w => 
+        w.id === schedulingWorkout.id 
+          ? { ...w, scheduled_days: selectedDays }
+          : w
+      ));
+
+      Alert.alert('Success', 'Workout schedule updated successfully');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update workout schedule. Please try again.');
+    }
+  };
+
   // Render individual workout card
-  const renderWorkoutCard = ({ item }: { item: WorkoutTemplate }) => (
-    <TouchableOpacity
-      style={styles.workoutCard}
-      onPress={() => handleWorkoutPress(item)}
-      activeOpacity={0.95}
-    >
-      {/* Thumbnail Image */}
-      <View style={styles.thumbnailContainer}>
-        {item.thumbnail_url ? (
-          <Image source={{ uri: item.thumbnail_url }} style={styles.thumbnail} />
-        ) : (
-          <View style={[styles.thumbnail, styles.placeholderThumbnail]}>
-            <Ionicons name="fitness" size={32} color="#17D4D4" />
-          </View>
-        )}
-      </View>
-
-      {/* Content Section */}
-      <View style={styles.cardContent}>
-        <Text style={styles.workoutTitle}>{item.name}</Text>
-        
-        <View style={styles.infoRow}>
-          <Ionicons name="time-outline" size={16} color="#5A5A5A" />
-          <Text style={styles.infoText}>{item.duration_minutes || 0} mins</Text>
-        </View>
-        
-        <View style={styles.infoRow}>
-          <Ionicons name="link-outline" size={16} color="#5A5A5A" />
-          <Text style={styles.infoText}>{item.exercise_count || 0} exercises</Text>
-        </View>
-      </View>
-
-      {/* 3-Dots Menu Button */}
+  const renderWorkoutCard = ({ item }: { item: WorkoutTemplate }) => {
+    const scheduledText = formatScheduledDays(item.scheduled_days);
+    
+    return (
       <TouchableOpacity
-        style={styles.menuButton}
-        onPress={(event) => handleWorkoutMenu(item, event)}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        style={styles.workoutCard}
+        onPress={() => handleWorkoutPress(item)}
+        activeOpacity={0.95}
       >
-        <Ionicons name="ellipsis-horizontal" size={20} color="#000000" />
-      </TouchableOpacity>
+        {/* Thumbnail Image */}
+        <View style={styles.thumbnailContainer}>
+          {item.thumbnail_url ? (
+            <Image source={{ uri: item.thumbnail_url }} style={styles.thumbnail} />
+          ) : (
+            <View style={[styles.thumbnail, styles.placeholderThumbnail]}>
+              <Ionicons name="fitness" size={32} color="#17D4D4" />
+            </View>
+          )}
+        </View>
 
-      {/* Arrow Icon */}
-      <View style={styles.arrowContainer}>
-        <Ionicons name="chevron-forward" size={18} color="#CCCCCC" />
-      </View>
-    </TouchableOpacity>
-  );
+        {/* Content Section */}
+        <View style={styles.cardContent}>
+          <View style={styles.titleRow}>
+            <Text style={styles.workoutTitle}>{item.name}</Text>
+            {scheduledText && (
+              <Text style={styles.scheduledText}>{scheduledText}</Text>
+            )}
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Ionicons name="time-outline" size={16} color="#5A5A5A" />
+            <Text style={styles.infoText}>{item.duration_minutes || 0} mins</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Ionicons name="link-outline" size={16} color="#5A5A5A" />
+            <Text style={styles.infoText}>{item.exercise_count || 0} exercises</Text>
+          </View>
+        </View>
+
+        {/* 3-Dots Menu Button */}
+        <TouchableOpacity
+          style={styles.menuButton}
+          onPress={(event) => handleWorkoutMenu(item, event)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="ellipsis-horizontal" size={20} color="#000000" />
+        </TouchableOpacity>
+
+        {/* Arrow Icon */}
+        <View style={styles.arrowContainer}>
+          <Ionicons name="chevron-forward" size={18} color="#CCCCCC" />
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   // Render empty state
   const renderEmptyState = () => (
@@ -270,6 +340,17 @@ const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
       ) : (
         renderEmptyState()
       )}
+      {/* Schedule Workout Modal */}
+      <ScheduleWorkoutModal
+        visible={showScheduleModal}
+        currentSchedule={schedulingWorkout?.scheduled_days || []}
+        workoutName={schedulingWorkout?.name || ''}
+        onClose={() => {
+          setShowScheduleModal(false);
+          setSchedulingWorkout(null);
+        }}
+        onSave={handleScheduleSave}
+      />
     </SafeAreaView>
   );
 };
@@ -414,6 +495,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Poppins-Regular',
     color: '#5A5A5A',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  scheduledText: {
+    fontSize: 12,
+    fontFamily: 'Poppins-Regular',
+    color: '#888888',
+    marginLeft: 8,
   },
 });
 
