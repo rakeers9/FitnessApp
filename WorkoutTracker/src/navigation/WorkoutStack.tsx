@@ -5,10 +5,17 @@ import { createStackNavigator } from '@react-navigation/stack';
 import MainTabNavigator from './MainTabNavigator';
 import EditWorkoutScreen from '../screens/main/EditWorkoutScreen';
 import ExerciseLibraryScreen from '../screens/main/ExerciseLibraryScreen';
-import LiveWorkoutSessionScreen from '../screens/main/LiveWorkoutSessionScreen';
+import ReorderExercisesScreen from '../screens/main/ReorderExercisesScreen';
 import { WorkoutSessionProvider } from '../context/WorkoutSessionContext';
 
-const Stack = createStackNavigator();
+export type WorkoutStackParamList = {
+  MainTabs: undefined;
+  EditWorkout: { workout?: any };
+  ExerciseLibrary: { onExercisesSelected: (exercises: any[]) => void };
+  ReorderExercises: { workout: any; onReorder: (exercises: any[]) => void };
+};
+
+const Stack = createStackNavigator<WorkoutStackParamList>();
 
 const WorkoutStack = () => {
   return (
@@ -36,8 +43,8 @@ const WorkoutStack = () => {
           }}
         />
         <Stack.Screen 
-          name="LiveWorkoutSession" 
-          component={LiveWorkoutSessionScreen}
+          name="ReorderExercises" 
+          component={ReorderExercisesScreen}
           options={{
             presentation: 'card',
           }}

@@ -169,10 +169,9 @@ export const WorkoutSessionProvider: React.FC<{ children: React.ReactNode }> = (
   // Adjust rest time
   const adjustRestTime = (seconds: number) => {
     setRestTime(prev => Math.max(0, prev + seconds));
-    updateSession(prev => ({
-      ...prev,
-      rest_remaining: Math.max(0, (prev?.rest_remaining || 0) + seconds),
-    }));
+    updateSession({
+      rest_remaining: Math.max(0, restTime + seconds),
+    });
   };
 
   // Cleanup on unmount

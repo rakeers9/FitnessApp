@@ -358,6 +358,8 @@ const styles = StyleSheet.create({
   },
   arrowContainer: {
     paddingLeft: 8,
+    marginTop: 40,
+    marginRight: 5,
   },
   
   // Menu Button
