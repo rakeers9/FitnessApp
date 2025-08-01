@@ -83,17 +83,10 @@ const ViewWorkoutSessionScreen: React.FC<ViewWorkoutSessionScreenProps> = ({ nav
 
       setSession(sessionData);
 
-      // Load workout sets with exercise details
+      // Load workout sets separately
       const { data: setsData, error: setsError } = await supabase
         .from('workout_sets')
-        .select(`
-          *,
-          exercises (
-            id,
-            name,
-            muscle_groups
-          )
-        `)
+        .select('*')
         .eq('session_id', sessionId)
         .order('exercise_id')
         .order('set_number');
@@ -103,15 +96,41 @@ const ViewWorkoutSessionScreen: React.FC<ViewWorkoutSessionScreenProps> = ({ nav
         return;
       }
 
+      if (!setsData || setsData.length === 0) {
+        console.log('No sets found for this session');
+        setExercises([]);
+        return;
+      }
+
+      // Get unique exercise IDs
+      const exerciseIds = [...new Set(setsData.map(set => set.exercise_id))];
+
+      // Load exercise details separately
+      const { data: exerciseData, error: exerciseError } = await supabase
+        .from('exercises')
+        .select('id, name, muscle_groups')
+        .in('id', exerciseIds);
+
+      if (exerciseError) {
+        console.error('Error loading exercises:', exerciseError);
+        return;
+      }
+
+      // Create exercise map for easy lookup
+      const exerciseMap = new Map();
+      exerciseData?.forEach(exercise => {
+        exerciseMap.set(exercise.id, exercise);
+      });
+
       // Group sets by exercise
-      const exerciseMap = new Map<string, Exercise>();
+      const exerciseGroupMap = new Map<string, Exercise>();
       
-      setsData?.forEach((set: any) => {
+      setsData.forEach((set: any) => {
         const exerciseId = set.exercise_id;
-        const exercise = set.exercises;
+        const exercise = exerciseMap.get(exerciseId);
         
-        if (!exerciseMap.has(exerciseId)) {
-          exerciseMap.set(exerciseId, {
+        if (!exerciseGroupMap.has(exerciseId)) {
+          exerciseGroupMap.set(exerciseId, {
             id: exerciseId,
             name: exercise?.name || 'Unknown Exercise',
             muscle_groups: exercise?.muscle_groups || [],
@@ -119,7 +138,7 @@ const ViewWorkoutSessionScreen: React.FC<ViewWorkoutSessionScreenProps> = ({ nav
           });
         }
         
-        exerciseMap.get(exerciseId)!.sets.push({
+        exerciseGroupMap.get(exerciseId)!.sets.push({
           id: set.id,
           set_number: set.set_number,
           weight: set.weight,
@@ -129,7 +148,7 @@ const ViewWorkoutSessionScreen: React.FC<ViewWorkoutSessionScreenProps> = ({ nav
         });
       });
 
-      setExercises(Array.from(exerciseMap.values()));
+      setExercises(Array.from(exerciseGroupMap.values()));
 
     } catch (error) {
       console.error('Error in loadSessionData:', error);

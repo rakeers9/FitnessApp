@@ -473,34 +473,61 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   // Load muscle group breakdown analytics
   const loadMuscleGroupAnalytics = async (userId: string) => {
     try {
-      // Get last 30 days of workout sessions with exercise data
+      // Get last 30 days of workout sessions
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const { data, error } = await supabase
+      const { data: sessions, error: sessionsError } = await supabase
         .from('workout_sessions')
-        .select(`
-          id,
-          date_performed,
-          workout_sets (
-            exercise_id,
-            exercises (
-              muscle_groups
-            )
-          )
-        `)
+        .select('id, date_performed')
         .eq('user_id', userId)
         .not('completed_at', 'is', null)
         .gte('date_performed', thirtyDaysAgo.toISOString().split('T')[0]);
 
-      if (error) {
-        console.error('Error loading muscle analytics:', error);
+      if (sessionsError) {
+        console.error('Error loading sessions for muscle analytics:', sessionsError);
         return;
       }
 
-      if (data && data.length > 0) {
+      if (!sessions || sessions.length === 0) {
+        console.log('No sessions found for muscle analytics');
+        return;
+      }
+
+      const sessionIds = sessions.map(s => s.id);
+
+      // Get workout sets for these sessions
+      const { data: sets, error: setsError } = await supabase
+        .from('workout_sets')
+        .select('exercise_id')
+        .in('session_id', sessionIds);
+
+      if (setsError) {
+        console.error('Error loading sets for muscle analytics:', setsError);
+        return;
+      }
+
+      if (!sets || sets.length === 0) {
+        console.log('No sets found for muscle analytics');
+        return;
+      }
+
+      const exerciseIds = [...new Set(sets.map(s => s.exercise_id))];
+
+      // Get exercises with muscle groups
+      const { data: exercises, error: exercisesError } = await supabase
+        .from('exercises')
+        .select('id, muscle_groups')
+        .in('id', exerciseIds);
+
+      if (exercisesError) {
+        console.error('Error loading exercises for muscle analytics:', exercisesError);
+        return;
+      }
+
+      if (exercises && exercises.length > 0) {
         // Calculate muscle group breakdown
-        const muscleData = calculateMuscleGroupBreakdown(data);
+        const muscleData = calculateMuscleGroupBreakdownFromData(exercises, sets);
         setMuscleAnalytics(muscleData);
         console.log(`Loaded muscle analytics: ${muscleData.length} muscle groups`);
       }
@@ -537,7 +564,46 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       .slice(-8); // Last 8 weeks only
   };
 
-  // Helper function to calculate muscle group breakdown
+  // Helper function to calculate muscle group breakdown from separate data
+  const calculateMuscleGroupBreakdownFromData = (exercises: any[], sets: any[]): MuscleGroupAnalytics[] => {
+    const muscleCount = new Map<string, number>();
+    let totalSessions = 0;
+
+    // Create a map of exercise_id to muscle_groups
+    const exerciseMuscleMap = new Map<string, string[]>();
+    exercises.forEach(exercise => {
+      if (exercise.muscle_groups && Array.isArray(exercise.muscle_groups)) {
+        exerciseMuscleMap.set(exercise.id, exercise.muscle_groups);
+      }
+    });
+
+    // Count muscle group usage from sets
+    sets.forEach(set => {
+      const muscleGroups = exerciseMuscleMap.get(set.exercise_id);
+      if (muscleGroups) {
+        muscleGroups.forEach((muscle: string) => {
+          muscleCount.set(muscle, (muscleCount.get(muscle) || 0) + 1);
+          totalSessions++;
+        });
+      }
+    });
+
+    if (totalSessions === 0) {
+      return [];
+    }
+
+    // Convert to percentage breakdown
+    return Array.from(muscleCount.entries())
+      .map(([muscle, count]) => ({
+        muscle_group: muscle,
+        sessions: count,
+        percentage: Math.round((count / totalSessions) * 100),
+      }))
+      .sort((a, b) => b.sessions - a.sessions)
+      .slice(0, 6); // Top 6 muscle groups
+  };
+
+  // Helper function to calculate muscle group breakdown (old version - keeping for compatibility)
   const calculateMuscleGroupBreakdown = (sessions: any[]): MuscleGroupAnalytics[] => {
     const muscleCount = new Map<string, number>();
     let totalSessions = 0;
