@@ -2,21 +2,14 @@
 
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 // Import screens
 import WorkoutsScreen from '../screens/main/WorkoutsScreen';
+import ProfileScreen from '../screens/main/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
-
-// Placeholder Profile Screen (temporary)
-const ProfileScreen = () => (
-  <View style={styles.placeholderContainer}>
-    <Text style={styles.placeholderText}>Profile Screen</Text>
-    <Text style={styles.placeholderSubtext}>Coming Soon!</Text>
-  </View>
-);
 
 const MainTabNavigator = () => {
   return (
@@ -65,7 +58,7 @@ const MainTabNavigator = () => {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: '#000000', // Dark navy background
+    backgroundColor: '#121418', // Dark background as specified in design
     height: 72,
     paddingBottom: 8,
     paddingTop: 16,
@@ -84,24 +77,7 @@ const styles = StyleSheet.create({
   homeIcon: {
     width: 24,
     height: 24,
-    tintColor: '#FFFFFF', // This will make the icon white to match the design
-  },
-  placeholderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  placeholderText: {
-    fontSize: 18,
-    fontFamily: 'Poppins-SemiBold',
-    color: '#192126',
-    marginBottom: 8,
-  },
-  placeholderSubtext: {
-    fontSize: 14,
-    fontFamily: 'Poppins-Regular',
-    color: '#5A5A5A',
+    tintColor: '#FFFFFF', // White icon color
   },
 });
 

@@ -24,12 +24,7 @@ import { supabase } from '../../services/supabase';
 // Types for navigation
 type ExerciseCommentsScreenProps = {
   navigation: StackNavigationProp<any>;
-  route: RouteProp<{
-    ExerciseComments: {
-      exerciseId: string;
-      exerciseName: string;
-    };
-  }, 'ExerciseComments'>;
+  route: RouteProp<any>;
 };
 
 // Types for comments
@@ -54,7 +49,16 @@ interface CommentUser {
 }
 
 const ExerciseCommentsScreen: React.FC<ExerciseCommentsScreenProps> = ({ navigation, route }) => {
-  const { exerciseId, exerciseName } = route.params;
+  const { exerciseId, exerciseName } = route.params || {};
+  
+  // Validate required params
+  useEffect(() => {
+    if (!exerciseId || !exerciseName) {
+      Alert.alert('Error', 'Missing exercise information', [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
+    }
+  }, [exerciseId, exerciseName, navigation]);
   
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,6 +99,8 @@ const ExerciseCommentsScreen: React.FC<ExerciseCommentsScreenProps> = ({ navigat
   };
 
   const loadComments = async () => {
+    if (!exerciseId) return;
+    
     try {
       setLoading(true);
       
@@ -160,7 +166,7 @@ const ExerciseCommentsScreen: React.FC<ExerciseCommentsScreenProps> = ({ navigat
   };
 
   const handleSubmitComment = async () => {
-    if (!newComment.trim() || !currentUser || submitting) return;
+    if (!newComment.trim() || !currentUser || submitting || !exerciseId) return;
 
     try {
       setSubmitting(true);
@@ -360,7 +366,7 @@ const ExerciseCommentsScreen: React.FC<ExerciseCommentsScreenProps> = ({ navigat
           </TouchableOpacity>
           <View style={styles.headerContent}>
             <Text style={styles.title}>Comments</Text>
-            <Text style={styles.subtitle}>{exerciseName}</Text>
+            <Text style={styles.subtitle}>{exerciseName || 'Exercise'}</Text>
           </View>
           <View style={styles.headerSpacer} />
         </View>
