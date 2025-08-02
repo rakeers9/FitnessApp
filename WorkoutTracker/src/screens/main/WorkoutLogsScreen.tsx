@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { RouteProp } from '@react-navigation/native';
+import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 
 // Types
@@ -49,17 +49,20 @@ const WorkoutLogsScreen: React.FC<WorkoutLogsScreenProps> = ({ navigation, route
   const [loading, setLoading] = useState(false);
   const [showWorkoutList, setShowWorkoutList] = useState(false);
 
-  useEffect(() => {
-    if (!date || !dateDisplay) {
-      Alert.alert('Error', 'Date information is required', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
-      return;
-    }
-    loadAvailableWorkouts();
-    // Refresh sessions data to get latest
-    refreshSessionsData();
-  }, [date, dateDisplay, navigation]);
+// Also, let's add a navigation listener to refresh data when coming back
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!date || !dateDisplay) {
+        Alert.alert('Error', 'Date information is required', [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+        return;
+      }
+      loadAvailableWorkouts();
+      // Refresh sessions data to get latest
+      refreshSessionsData();
+    }, [date, dateDisplay, navigation])
+  );
 
   // Load available workout templates
   const loadAvailableWorkouts = async () => {
@@ -110,9 +113,14 @@ const WorkoutLogsScreen: React.FC<WorkoutLogsScreenProps> = ({ navigation, route
     }
   };
 
-  // Navigation handlers
+  // UPDATED: Navigation handlers
   const handleBack = () => {
-    navigation.goBack();
+    // Always navigate back to Profile when leaving WorkoutLogs
+    navigation.navigate('MainTabs', { 
+      screen: 'Profile',
+      // Reset the stack so we don't accumulate screens
+      params: { screen: 'Profile' }
+    });
   };
 
   const handleAddLogs = () => {
@@ -126,7 +134,6 @@ const WorkoutLogsScreen: React.FC<WorkoutLogsScreenProps> = ({ navigation, route
       workout: workout,
       date: date,
       dateDisplay: dateDisplay,
-      onWorkoutSaved: refreshSessionsData,
     });
   };
 
@@ -137,21 +144,6 @@ const WorkoutLogsScreen: React.FC<WorkoutLogsScreenProps> = ({ navigation, route
       mode: 'create_log', // Special mode for creating workout logs
       date: date,
       dateDisplay: dateDisplay,
-      onExercisesSelected: (exercises: any[]) => {
-        // Navigate to log workout screen with custom workout
-        const customWorkout = {
-          id: 'custom-' + Date.now(),
-          name: `Workout - ${dateDisplay}`,
-          exercises: exercises,
-        };
-        navigation.navigate('LogWorkout', {
-          workout: customWorkout,
-          date: date,
-          dateDisplay: dateDisplay,
-          isCustom: true,
-          onWorkoutSaved: refreshSessionsData,
-        });
-      },
     });
   };
 

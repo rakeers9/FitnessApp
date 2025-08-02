@@ -642,7 +642,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
 
   // Navigation handlers
   const handleSettings = () => {
-    Alert.alert('Settings', 'Settings screen coming soon!');
+    navigation.navigate('Settings');
   };
 
   // Render loading state

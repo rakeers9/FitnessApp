@@ -62,6 +62,11 @@ const ExerciseLibraryScreen: React.FC<ExerciseLibraryScreenProps> = ({ navigatio
     'Abs', 'Quads', 'Hamstrings', 'Calves', 'Glutes', 'CUSTOM'
   ];
 
+  // Check mode
+  const mode = route.params?.mode;
+  const isCreateLogMode = mode === 'create_log';
+  const isAddToLogMode = mode === 'add_to_log';
+
   useEffect(() => {
     loadExercises();
     initializeMuscleGroups();
@@ -246,6 +251,7 @@ const ExerciseLibraryScreen: React.FC<ExerciseLibraryScreenProps> = ({ navigatio
     navigation.goBack();
   };
 
+  // UPDATED: Main function to handle adding exercises
   const handleAddToWorkout = () => {
     if (selectedExercises.size === 0) {
       Alert.alert('No Selection', 'Please select at least one exercise to add');
@@ -254,7 +260,75 @@ const ExerciseLibraryScreen: React.FC<ExerciseLibraryScreenProps> = ({ navigatio
 
     const selectedExerciseData = exercises.filter(ex => selectedExercises.has(ex.id));
     
-    // Pass selected exercises back to previous screen
+    // Check if this is add_to_log mode (adding to existing workout log)
+    if (isAddToLogMode) {
+      // Call the callback function to add exercises to the existing workout
+      if (route.params?.onExercisesSelected) {
+        route.params.onExercisesSelected(selectedExerciseData);
+      }
+      navigation.goBack();
+      return;
+    }
+    
+    // Check if this is create_log mode (coming from WorkoutLogsScreen)
+    if (isCreateLogMode) {
+      // Handle create_log mode - navigate directly to LogWorkout
+      const { date, dateDisplay } = route.params;
+      
+      // Create custom workout with selected exercises
+      const customWorkout = {
+        id: 'custom-' + Date.now(),
+        name: `Workout - ${dateDisplay || 'Custom'}`,
+        exercises: selectedExerciseData.map((exercise, exerciseIndex) => {
+          const exerciseInstanceId = `${exercise.id}-${Date.now()}-${exerciseIndex}-${Math.random().toString(36).substr(2, 9)}`;
+          
+          return {
+            id: exerciseInstanceId,
+            original_exercise_id: exercise.id,
+            name: exercise.name,
+            duration_seconds: 60, // Default rest time
+            sets_count: 3, // Default sets
+            reps_count: 12, // Default reps
+            muscle_groups: exercise.muscle_groups,
+            sets: [
+              { 
+                id: `${exerciseInstanceId}-set-1-${Date.now()}`, 
+                set_number: 1, 
+                weight: undefined, 
+                reps: undefined, 
+                completed: false 
+              },
+              { 
+                id: `${exerciseInstanceId}-set-2-${Date.now()}`, 
+                set_number: 2, 
+                weight: undefined, 
+                reps: undefined, 
+                completed: false 
+              },
+              { 
+                id: `${exerciseInstanceId}-set-3-${Date.now()}`, 
+                set_number: 3, 
+                weight: undefined, 
+                reps: undefined, 
+                completed: false 
+              },
+            ],
+          };
+        }),
+      };
+
+      // Navigate to LogWorkout screen
+      navigation.navigate('LogWorkout', {
+        workout: customWorkout,
+        date: date,
+        dateDisplay: dateDisplay,
+        isCustom: true,
+      });
+      
+      return;
+    }
+    
+    // Original behavior for regular workout creation
     if (route.params?.onExercisesSelected) {
       route.params.onExercisesSelected(selectedExerciseData);
     }
@@ -319,12 +393,28 @@ const ExerciseLibraryScreen: React.FC<ExerciseLibraryScreenProps> = ({ navigatio
           <Ionicons name="chevron-back" size={24} color="#000000" />
         </TouchableOpacity>
         
-        <Text style={styles.title}>Exercise Library</Text>
+        <Text style={styles.title}>
+          {isCreateLogMode ? 'Create Custom Workout' : 
+           isAddToLogMode ? 'Add Exercises' : 
+           'Exercise Library'}
+        </Text>
         
         <TouchableOpacity style={styles.addButton} onPress={() => setShowCreateModal(true)}>
           <Ionicons name="add" size={24} color="#000000" />
         </TouchableOpacity>
       </View>
+
+      {/* Subtitle for create_log mode */}
+      {(isCreateLogMode || isAddToLogMode) && route.params?.dateDisplay && (
+        <View style={styles.subtitleContainer}>
+          <Text style={styles.subtitle}>
+            {isCreateLogMode 
+              ? `Creating workout for ${route.params.dateDisplay}`
+              : `Adding exercises for ${route.params.dateDisplay}`
+            }
+          </Text>
+        </View>
+      )}
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -369,7 +459,12 @@ const ExerciseLibraryScreen: React.FC<ExerciseLibraryScreenProps> = ({ navigatio
           disabled={selectedExercises.size === 0}
         >
           <Text style={styles.addToWorkoutText}>
-            Add to Workout ({selectedExercises.size})
+            {isCreateLogMode 
+              ? `Create Workout (${selectedExercises.size})` 
+              : isAddToLogMode
+              ? `Add Exercises (${selectedExercises.size})`
+              : `Add to Workout (${selectedExercises.size})`
+            }
           </Text>
         </TouchableOpacity>
       </View>
@@ -481,6 +576,19 @@ const styles = StyleSheet.create({
   },
   addButton: {
     padding: 4,
+  },
+  
+  // NEW: Subtitle for create_log mode
+  subtitleContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+    alignItems: 'center',
+  },
+  subtitle: {
+    fontSize: 14,
+    fontFamily: 'Poppins-Regular',
+    color: '#17D4D4',
+    textAlign: 'center',
   },
   
   // Search

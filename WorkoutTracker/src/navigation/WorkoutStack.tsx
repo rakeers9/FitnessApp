@@ -8,10 +8,12 @@ import MainTabNavigator from './MainTabNavigator';
 import EditWorkoutScreen from '../screens/main/EditWorkoutScreen';
 import ExerciseLibraryScreen from '../screens/main/ExerciseLibraryScreen';
 import ReorderExercisesScreen from '../screens/main/ReorderExercisesScreen';
-import ExerciseCommentsScreen from '../screens/main/ExerciseCommentsScreen'; // Placeholder implementation
+import ExerciseCommentsScreen from '../screens/main/ExerciseCommentsScreen';
 import WorkoutLogsScreen from '../screens/main/WorkoutLogsScreen';
 import LogWorkoutScreen from '../screens/main/LogWorkoutScreen';
 import ViewWorkoutSessionScreen from '../screens/main/ViewWorkoutSessionScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
+import NotificationsScreen from '../screens/main/NotificationsScreen'; // NEW
 
 const Stack = createStackNavigator();
 
@@ -49,7 +51,7 @@ const WorkoutStack = () => {
         component={ReorderExercisesScreen}
       />
       
-      {/* Exercise comments (placeholder) */}
+      {/* Exercise comments */}
       <Stack.Screen 
         name="ExerciseComments" 
         component={ExerciseCommentsScreen}
@@ -71,6 +73,18 @@ const WorkoutStack = () => {
       <Stack.Screen 
         name="ViewWorkoutSession" 
         component={ViewWorkoutSessionScreen}
+      />
+      
+      {/* Settings screen */}
+      <Stack.Screen 
+        name="Settings" 
+        component={SettingsScreen}
+      />
+      
+      {/* NEW: Notifications screen */}
+      <Stack.Screen 
+        name="Notifications" 
+        component={NotificationsScreen}
       />
     </Stack.Navigator>
   );

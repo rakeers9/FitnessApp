@@ -54,8 +54,7 @@ const LogWorkoutScreen: React.FC<LogWorkoutScreenProps> = ({ navigation, route }
     workout: initialWorkout, 
     date, 
     dateDisplay, 
-    isCustom = false,
-    onWorkoutSaved 
+    isCustom = false
   } = route.params || {};
 
   const [workout, setWorkout] = useState<WorkoutTemplate>(initialWorkout || { id: 'temp', name: 'Workout', exercises: [] });
@@ -75,6 +74,9 @@ const LogWorkoutScreen: React.FC<LogWorkoutScreenProps> = ({ navigation, route }
 
   // State for set inputs
   const [setInputs, setSetInputs] = useState<{ [key: string]: { weight: string; reps: string } }>({});
+  
+  // NEW: State for previous workout data
+  const [previousData, setPreviousData] = useState<{ [key: string]: { weight: number; reps: number } }>({});
 
   // Initialize set inputs
   useEffect(() => {
@@ -88,7 +90,91 @@ const LogWorkoutScreen: React.FC<LogWorkoutScreenProps> = ({ navigation, route }
       });
     });
     setSetInputs(inputs);
+    
+    // Load previous workout data
+    loadPreviousData();
   }, [workout.exercises]);
+
+  // NEW: Load previous workout data for exercises
+  const loadPreviousData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const exerciseIds = workout.exercises.map(ex => ex.original_exercise_id || ex.id);
+      if (exerciseIds.length === 0) return;
+
+      // FIXED: Get completed workout sessions first, then join with sets
+      const { data: completedSessions, error: sessionError } = await supabase
+        .from('workout_sessions')
+        .select('id, date_performed, completed_at')
+        .eq('user_id', user.id)
+        .not('completed_at', 'is', null) // Only completed workouts
+        .lt('date_performed', date) // Only get data from before this date
+        .order('date_performed', { ascending: false })
+        .limit(20); // Get recent sessions
+
+      if (sessionError) {
+        console.error('Error loading sessions:', sessionError);
+        return;
+      }
+
+      if (!completedSessions || completedSessions.length === 0) {
+        console.log('No completed sessions found before this date');
+        return;
+      }
+
+      const sessionIds = completedSessions.map(s => s.id);
+
+      // Get workout sets for these sessions
+      const { data: recentSets, error: setsError } = await supabase
+        .from('workout_sets')
+        .select('exercise_id, weight, reps, set_number, session_id')
+        .in('exercise_id', exerciseIds)
+        .in('session_id', sessionIds)
+        .order('session_id', { ascending: false }) // Most recent sessions first
+        .limit(100); // Get recent data
+
+      if (setsError) {
+        console.error('Error loading previous sets:', setsError);
+        return;
+      }
+
+      if (recentSets && recentSets.length > 0) {
+        // Group by exercise and get the most recent performance per set number
+        const exerciseData: { [key: string]: { weight: number; reps: number } } = {};
+        
+        // For each exercise, find the most recent data for each set number
+        exerciseIds.forEach(exerciseId => {
+          const exerciseSets = recentSets.filter((set: any) => set.exercise_id === exerciseId);
+          
+          if (exerciseSets.length > 0) {
+            // Sort by session order (most recent first) and take first occurrence of each set number
+            const setsByNumber = new Map();
+            exerciseSets.forEach((set: any) => {
+              if (!setsByNumber.has(set.set_number)) {
+                setsByNumber.set(set.set_number, set);
+              }
+            });
+            
+            // For simplicity, take the data from set 1 as representative
+            const firstSet = setsByNumber.get(1);
+            if (firstSet) {
+              exerciseData[exerciseId] = {
+                weight: firstSet.weight,
+                reps: firstSet.reps,
+              };
+            }
+          }
+        });
+
+        setPreviousData(exerciseData);
+        console.log('Loaded previous data for', Object.keys(exerciseData).length, 'exercises');
+      }
+    } catch (error) {
+      console.error('Error in loadPreviousData:', error);
+    }
+  };
 
   // Helper functions for set inputs
   const updateSetInput = (setId: string, field: 'weight' | 'reps', value: string) => {
@@ -108,6 +194,60 @@ const LogWorkoutScreen: React.FC<LogWorkoutScreenProps> = ({ navigation, route }
   // Navigation handlers
   const handleBack = () => {
     navigation.goBack();
+  };
+
+  // NEW: Handle adding exercises to workout
+  const handleAddExercises = () => {
+    navigation.navigate('ExerciseLibrary', {
+      mode: 'add_to_log', // Special mode for adding to existing log
+      currentWorkout: workout,
+      date: date,
+      dateDisplay: dateDisplay,
+      onExercisesSelected: (selectedExercises: any[]) => {
+        // Add new exercises to current workout
+        const newExercises = selectedExercises.map((exercise, exerciseIndex) => {
+          const exerciseInstanceId = `${exercise.id}-${Date.now()}-${exerciseIndex}-${Math.random().toString(36).substr(2, 9)}`;
+          
+          return {
+            id: exerciseInstanceId,
+            original_exercise_id: exercise.id,
+            name: exercise.name,
+            duration_seconds: 60, // Default rest time
+            sets_count: 3, // Default sets
+            reps_count: 12, // Default reps
+            muscle_groups: exercise.muscle_groups,
+            sets: [
+              { 
+                id: `${exerciseInstanceId}-set-1-${Date.now()}`, 
+                set_number: 1, 
+                weight: undefined, 
+                reps: undefined, 
+                completed: false 
+              },
+              { 
+                id: `${exerciseInstanceId}-set-2-${Date.now()}`, 
+                set_number: 2, 
+                weight: undefined, 
+                reps: undefined, 
+                completed: false 
+              },
+              { 
+                id: `${exerciseInstanceId}-set-3-${Date.now()}`, 
+                set_number: 3, 
+                weight: undefined, 
+                reps: undefined, 
+                completed: false 
+              },
+            ],
+          };
+        });
+
+        setWorkout(prev => ({
+          ...prev,
+          exercises: [...prev.exercises, ...newExercises],
+        }));
+      },
+    });
   };
 
   // Handle set completion toggle
@@ -260,15 +400,15 @@ const LogWorkoutScreen: React.FC<LogWorkoutScreenProps> = ({ navigation, route }
     }
   };
 
-  // Handle completion modal close
+  // UPDATED: Handle completion modal close - fix navigation
   const handleCompleteSave = () => {
     setShowCompleteModal(false);
-    // Call callback to refresh parent screen
-    if (onWorkoutSaved) {
-      onWorkoutSaved();
-    }
-    // Navigate back to logs screen
-    navigation.goBack();
+    
+    // Navigate directly back to Profile screen
+    navigation.navigate('MainTabs', { 
+      screen: 'Profile',
+      // This ensures we go directly to Profile without WorkoutLogs in the stack
+    });
   };
 
   // Calculate stats
@@ -313,6 +453,12 @@ const LogWorkoutScreen: React.FC<LogWorkoutScreenProps> = ({ navigation, route }
             const weightInput = getSetInputValue(set.id, 'weight');
             const repsInput = getSetInputValue(set.id, 'reps');
             
+            // Get previous data for this exercise
+            const exerciseId = exercise.original_exercise_id || exercise.id;
+            const prevData = previousData[exerciseId];
+            const weightPlaceholder = prevData?.weight ? prevData.weight.toString() : '-';
+            const repsPlaceholder = prevData?.reps ? prevData.reps.toString() : '-';
+            
             return (
               <View key={set.id} style={styles.setRow}>
                 <Text style={styles.setNumber}>{set.set_number}</Text>
@@ -321,11 +467,13 @@ const LogWorkoutScreen: React.FC<LogWorkoutScreenProps> = ({ navigation, route }
                 <TextInput
                   style={[
                     styles.setInput,
-                    set.completed && styles.completedSetInput
+                    set.completed && styles.completedSetInput,
+                    // FIXED: Show black text when user has typed something
+                    weightInput && styles.userInputText
                   ]}
                   value={weightInput}
                   onChangeText={(value) => updateSetInput(set.id, 'weight', value)}
-                  placeholder="-"
+                  placeholder={weightPlaceholder}
                   placeholderTextColor="#CCCCCC"
                   keyboardType="numeric"
                 />
@@ -334,11 +482,13 @@ const LogWorkoutScreen: React.FC<LogWorkoutScreenProps> = ({ navigation, route }
                 <TextInput
                   style={[
                     styles.setInput,
-                    set.completed && styles.completedSetInput
+                    set.completed && styles.completedSetInput,
+                    // FIXED: Show black text when user has typed something
+                    repsInput && styles.userInputText
                   ]}
                   value={repsInput}
                   onChangeText={(value) => updateSetInput(set.id, 'reps', value)}
-                  placeholder="-"
+                  placeholder={repsPlaceholder}
                   placeholderTextColor="#CCCCCC"
                   keyboardType="numeric"
                 />
@@ -379,7 +529,10 @@ const LogWorkoutScreen: React.FC<LogWorkoutScreenProps> = ({ navigation, route }
           <TouchableOpacity style={styles.headerButton} onPress={handleBack}>
             <Ionicons name="chevron-back" size={24} color="#000000" />
           </TouchableOpacity>
-          <View style={styles.headerSpacer} />
+          {/* NEW: Add Exercise Button */}
+          <TouchableOpacity style={styles.headerButton} onPress={handleAddExercises}>
+            <Ionicons name="add" size={24} color="#000000" />
+          </TouchableOpacity>
         </View>
 
         {/* Workout Title */}
@@ -484,9 +637,6 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: 4,
-  },
-  headerSpacer: {
-    width: 32,
   },
   scrollContainer: {
     flex: 1,
@@ -652,12 +802,16 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: 'Poppins-Regular',
-    color: '#000000',
+    color: '#888888', // UPDATED: Made default input text grey
     textAlign: 'center',
     paddingVertical: 8,
     paddingHorizontal: 4,
     borderRadius: 4,
     backgroundColor: 'transparent',
+  },
+  userInputText: {
+    color: '#000000', // Black text when user has typed something
+    fontFamily: 'Poppins-Medium',
   },
   completedSetInput: {
     backgroundColor: '#DFFCFD',

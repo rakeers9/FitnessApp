@@ -16,7 +16,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 import ScheduleWorkoutModal from '../../components/ScheduleWorkoutModal';
-
+import { getUnreadNotificationCount } from '../../services/notifications';
 
 // Navigation props type
 type WorkoutsScreenProps = {
@@ -50,19 +50,28 @@ const formatScheduledDays = (days: string[] = []): string => {
   return days.map(day => dayAbbreviations[day] || day).join(', ');
 };
 
-
 const WorkoutsScreen: React.FC<WorkoutsScreenProps> = ({ navigation }) => {
-const [workouts, setWorkouts] = useState<WorkoutTemplate[]>([]);
-const [loading, setLoading] = useState(true);
-const [showScheduleModal, setShowScheduleModal] = useState(false);
-const [schedulingWorkout, setSchedulingWorkout] = useState<WorkoutTemplate | null>(null);
+  const [workouts, setWorkouts] = useState<WorkoutTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [schedulingWorkout, setSchedulingWorkout] = useState<WorkoutTemplate | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  // Load workouts from database when screen comes into focus
+  // FIXED: Single useFocusEffect that loads both workouts and unread count
   useFocusEffect(
     React.useCallback(() => {
       loadWorkouts();
+      loadUnreadCount();
     }, [])
   );
+
+  const loadUnreadCount = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const count = await getUnreadNotificationCount(user.id);
+      setUnreadCount(count);
+    }
+  };
 
   const loadWorkouts = async () => {
     try {
@@ -108,7 +117,7 @@ const [schedulingWorkout, setSchedulingWorkout] = useState<WorkoutTemplate | nul
           duration_minutes: estimatedDuration,
           exercise_count: exerciseCount,
           thumbnail_url: null, // Explicitly null for now
-          scheduled_days: template.scheduled_days || [], // ADD THIS LINE
+          scheduled_days: template.scheduled_days || [],
         };
       });
 
@@ -128,7 +137,7 @@ const [schedulingWorkout, setSchedulingWorkout] = useState<WorkoutTemplate | nul
 
   // Handle notifications button
   const handleNotifications = () => {
-    Alert.alert('Notifications', 'Notifications screen coming soon!');
+    navigation.navigate('Notifications');
   };
 
   // Handle workout card press
@@ -138,103 +147,147 @@ const [schedulingWorkout, setSchedulingWorkout] = useState<WorkoutTemplate | nul
 
   // Handle workout menu (3-dots)
   const handleWorkoutMenu = (workout: WorkoutTemplate, event?: any) => {
-    // Prevent card tap when menu is tapped
-    if (event) {
-      event.stopPropagation();
-    }
-    
-    Alert.alert(
-      workout.name,
-      'Choose an option:',
-      [
-        { 
-          text: 'Schedule Workout', 
-          onPress: () => {
-            setSchedulingWorkout(workout);
-            setShowScheduleModal(true);
+  // Prevent card tap when menu is tapped
+  if (event) {
+    event.stopPropagation();
+  }
+  
+  Alert.alert(
+    workout.name,
+    'Choose an option:',
+    [
+      { 
+        text: 'Rename Workout', 
+        onPress: () => handleRenameWorkout(workout)
+      },
+      { 
+        text: 'Schedule Workout', 
+        onPress: () => {
+          setSchedulingWorkout(workout);
+          setShowScheduleModal(true);
+        }
+      },
+      { 
+        text: 'Delete Workout', 
+        style: 'destructive',
+        onPress: () => handleDeleteWorkout(workout)
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]
+  );
+};
+
+// Add this new function after handleWorkoutMenu:
+const handleRenameWorkout = (workout: WorkoutTemplate) => {
+  Alert.prompt(
+    'Rename Workout',
+    'Enter a new name for this workout:',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: 'Save', 
+        onPress: async (newName) => {
+          if (!newName || newName.trim() === '') {
+            Alert.alert('Error', 'Workout name cannot be empty');
+            return;
           }
-        },
-        { 
-          text: 'Delete Workout', 
-          style: 'destructive',
-          onPress: () => handleDeleteWorkout(workout)
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
-  };
+
+          try {
+            const { error } = await supabase
+              .from('workout_templates')
+              .update({ name: newName.trim() })
+              .eq('id', workout.id);
+
+            if (error) {
+              console.error('Error renaming workout:', error);
+              Alert.alert('Error', 'Failed to rename workout. Please try again.');
+              return;
+            }
+
+            // Reload workouts to show the change
+            await loadWorkouts();
+            Alert.alert('Success', 'Workout renamed successfully');
+          } catch (error) {
+            console.error('Error in handleRenameWorkout:', error);
+            Alert.alert('Error', 'Failed to rename workout. Please try again.');
+          }
+        }
+      },
+    ],
+    'plain-text',
+    workout.name
+  );
+};
 
   // Handle delete workout
-  const handleDeleteWorkout = (workout: WorkoutTemplate) => {
-    Alert.alert(
-      'Delete Workout',
-      `Are you sure you want to delete "${workout.name}"? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('Deleting workout:', workout.id);
-              
-              const { error } = await supabase
-                .from('workout_templates')
-                .update({ is_active: false })
-                .eq('id', workout.id);
+const handleDeleteWorkout = (workout: WorkoutTemplate) => {
+  Alert.alert(
+    'Delete Workout',
+    `Are you sure you want to delete "${workout.name}"? This action cannot be undone.`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: 'Delete', 
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            console.log('Deleting workout:', workout.id);
+            
+            const { error } = await supabase
+              .from('workout_templates')
+              .update({ is_active: false })
+              .eq('id', workout.id);
 
-              if (error) {
-                console.error('Error deleting workout:', error);
-                Alert.alert('Error', 'Failed to delete workout. Please try again.');
-                return;
-              }
-
-              console.log('Workout deleted successfully');
-              
-              // Remove from local state immediately
-              setWorkouts(prev => prev.filter(w => w.id !== workout.id));
-              
-              Alert.alert('Success', 'Workout deleted successfully');
-            } catch (error) {
-              console.error('Error in handleDeleteWorkout:', error);
+            if (error) {
+              console.error('Error deleting workout:', error);
               Alert.alert('Error', 'Failed to delete workout. Please try again.');
+              return;
             }
+
+            console.log('Workout deleted successfully');
+            
+            // FORCE reload workouts from database instead of just updating state
+            // await loadWorkouts();
+            
+            Alert.alert('Success', 'Workout deleted successfully');
+          } catch (error) {
+            console.error('Error in handleDeleteWorkout:', error);
+            Alert.alert('Error', 'Failed to delete workout. Please try again.');
           }
-        },
-      ]
-    );
-  };
-
+        }
+      },
+    ]
+  );
+};
   const handleScheduleSave = async (selectedDays: string[]) => {
-    if (!schedulingWorkout) return;
+  if (!schedulingWorkout) return;
 
-    try {
-      const { error } = await supabase
-        .from('workout_templates')
-        .update({ 
-          scheduled_days: selectedDays,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', schedulingWorkout.id);
+  try {
+    console.log('Updating workout schedule for ID:', schedulingWorkout.id);
+    console.log('Selected days:', selectedDays);
 
-      if (error) {
-        Alert.alert('Error', 'Failed to update workout schedule. Please try again.');
-        return;
-      }
+    const { error } = await supabase
+      .from('workout_templates')
+      .update({ scheduled_days: selectedDays })
+      .eq('id', schedulingWorkout.id);
 
-      // Update local state
-      setWorkouts(prev => prev.map(w => 
-        w.id === schedulingWorkout.id 
-          ? { ...w, scheduled_days: selectedDays }
-          : w
-      ));
-
-      Alert.alert('Success', 'Workout schedule updated successfully');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update workout schedule. Please try again.');
+    if (error) {
+      console.error('Database error updating schedule:', error);
+      Alert.alert('Error', `Failed to update workout schedule: ${error.message}`);
+      return;
     }
-  };
 
+    console.log('Schedule updated successfully');
+
+    // FORCE reload workouts to ensure UI is in sync
+    await loadWorkouts();
+
+    Alert.alert('Success', 'Workout schedule updated successfully');
+  } catch (error) {
+    console.error('Error in handleScheduleSave:', error);
+    Alert.alert('Error', 'Failed to update workout schedule. Please try again.');
+  }
+};
   // Render individual workout card
   const renderWorkoutCard = ({ item }: { item: WorkoutTemplate }) => {
     const scheduledText = formatScheduledDays(item.scheduled_days);
@@ -320,6 +373,13 @@ const [schedulingWorkout, setSchedulingWorkout] = useState<WorkoutTemplate | nul
             onPress={handleNotifications}
           >
             <Ionicons name="notifications-outline" size={24} color="#000000" />
+            {unreadCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -340,6 +400,7 @@ const [schedulingWorkout, setSchedulingWorkout] = useState<WorkoutTemplate | nul
       ) : (
         renderEmptyState()
       )}
+      
       {/* Schedule Workout Modal */}
       <ScheduleWorkoutModal
         visible={showScheduleModal}
@@ -379,7 +440,8 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     marginLeft: 12,
-    padding: 4, // Add touch area
+    padding: 4,
+    position: 'relative', // Add this for badge positioning
   },
   
   // Workout Cards
@@ -507,6 +569,26 @@ const styles = StyleSheet.create({
     color: '#888888',
     marginLeft: 8,
   },
+  
+  // Notification Badge
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#FF3B3B',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationBadgeText: {
+    fontSize: 10,
+    fontFamily: 'Poppins-Bold',
+    color: '#FFFFFF',
+  },
 });
 
 export default WorkoutsScreen;
+
+
