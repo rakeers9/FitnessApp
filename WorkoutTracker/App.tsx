@@ -5,6 +5,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { supabase } from './src/services/supabase';
 import { Session } from '@supabase/supabase-js';
+import { WorkoutSessionProvider } from './src/context/WorkoutSessionContext';
 
 // Font loading - combining Google Fonts with custom font
 import { useFonts } from 'expo-font';
@@ -140,13 +141,14 @@ export default function App() {
   }
 
   return (
+  <WorkoutSessionProvider>
     <NavigationContainer>
       <Stack.Navigator 
         screenOptions={{ 
           headerShown: false,
-          cardStyle: { backgroundColor: '#FFFFFF' }, // Solid background
-          animation: 'none', // Disable all animations for instant transitions
-          gestureEnabled: false,   // Disable gestures that can cause overlaps
+          cardStyle: { backgroundColor: '#FFFFFF' },
+          animation: 'none',
+          gestureEnabled: false,   
         }}
       >
         {!session ? (
@@ -170,5 +172,7 @@ export default function App() {
         )}
       </Stack.Navigator>
     </NavigationContainer>
-  );
+  </WorkoutSessionProvider>
+);
+
 }
