@@ -42,7 +42,7 @@ interface MuscleGroup {
 const ExerciseLibraryScreen: React.FC<ExerciseLibraryScreenProps> = ({ navigation, route }) => {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [filteredExercises, setFilteredExercises] = useState<Exercise[]>([]);
-  const [selectedExercises, setSelectedExercises] = useState<Set<string>>(new Set());
+  const [selectedExercises, setSelectedExercises] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   
@@ -155,15 +155,16 @@ const ExerciseLibraryScreen: React.FC<ExerciseLibraryScreenProps> = ({ navigatio
 
   // Exercise selection handlers
   const toggleExerciseSelection = (exerciseId: string) => {
-    const newSelected = new Set(selectedExercises);
-    if (newSelected.has(exerciseId)) {
-      newSelected.delete(exerciseId);
+  setSelectedExercises(prev => {
+    if (prev.includes(exerciseId)) {
+      // Remove from selection
+      return prev.filter(id => id !== exerciseId);
     } else {
-      newSelected.add(exerciseId);
+      // Add to end of selection (preserves order)
+      return [...prev, exerciseId];
     }
-    setSelectedExercises(newSelected);
-  };
-
+  });
+};
   // Filter modal handlers
   const toggleMuscleFilter = (muscleId: string) => {
     const newFilters = new Set(selectedFilters);
@@ -253,12 +254,15 @@ const ExerciseLibraryScreen: React.FC<ExerciseLibraryScreenProps> = ({ navigatio
 
   // UPDATED: Main function to handle adding exercises
   const handleAddToWorkout = () => {
-    if (selectedExercises.size === 0) {
+    if (selectedExercises.length === 0) {
       Alert.alert('No Selection', 'Please select at least one exercise to add');
       return;
     }
 
-    const selectedExerciseData = exercises.filter(ex => selectedExercises.has(ex.id));
+    // Get exercises in the order they were selected
+  const selectedExerciseData = selectedExercises.map(exerciseId => 
+      exercises.find(ex => ex.id === exerciseId)
+    ).filter(Boolean); // Remove any undefined items
     
     // Check if this is add_to_log mode (adding to existing workout log)
     if (isAddToLogMode) {
@@ -336,9 +340,10 @@ const ExerciseLibraryScreen: React.FC<ExerciseLibraryScreenProps> = ({ navigatio
     navigation.goBack();
   };
 
-  // Render exercise item
+  // Update the renderExerciseItem function to check if exercise is selected:
   const renderExerciseItem = ({ item }: { item: Exercise }) => {
-    const isSelected = selectedExercises.has(item.id);
+    const isSelected = selectedExercises.includes(item.id); // Changed from .has() to .includes()
+    const selectionOrder = selectedExercises.indexOf(item.id) + 1; // Get selection order
     const muscleText = item.muscle_groups?.join(', ') || 'No muscles specified';
 
     return (
@@ -358,11 +363,11 @@ const ExerciseLibraryScreen: React.FC<ExerciseLibraryScreenProps> = ({ navigatio
           <Text style={styles.exerciseMuscles}>{muscleText}</Text>
         </View>
 
-        {/* Checkbox */}
+        {/* Checkbox with selection order */}
         <View style={styles.checkbox}>
           {isSelected ? (
             <View style={styles.checkboxSelected}>
-              <Ionicons name="checkmark" size={14} color="#17D4D4" />
+              <Text style={styles.selectionOrderText}>{selectionOrder}</Text>
             </View>
           ) : (
             <View style={styles.checkboxUnselected} />
@@ -453,17 +458,17 @@ const ExerciseLibraryScreen: React.FC<ExerciseLibraryScreenProps> = ({ navigatio
         <TouchableOpacity
           style={[
             styles.addToWorkoutButton,
-            selectedExercises.size === 0 && styles.addToWorkoutButtonDisabled
+            selectedExercises.length === 0 && styles.addToWorkoutButtonDisabled
           ]}
           onPress={handleAddToWorkout}
-          disabled={selectedExercises.size === 0}
+          disabled={selectedExercises.length === 0}
         >
           <Text style={styles.addToWorkoutText}>
             {isCreateLogMode 
-              ? `Create Workout (${selectedExercises.size})` 
+              ? `Create Workout (${selectedExercises.length})` 
               : isAddToLogMode
-              ? `Add Exercises (${selectedExercises.size})`
-              : `Add to Workout (${selectedExercises.size})`
+              ? `Add Exercises (${selectedExercises.length})`
+              : `Add to Workout (${selectedExercises.length})`
             }
           </Text>
         </TouchableOpacity>
@@ -818,6 +823,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Poppins-SemiBold',
     color: '#FFFFFF',
+  },
+  selectionOrderText: {
+    fontSize: 12,
+    fontFamily: 'Poppins-Bold',
+    color: '#17D4D4',
   },
 });
 

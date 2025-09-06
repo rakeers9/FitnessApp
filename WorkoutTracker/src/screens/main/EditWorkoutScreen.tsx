@@ -62,6 +62,18 @@ interface WorkoutTemplate {
   scheduled_days?: string[];
 }
 
+const isBodyweightExercise = (exercise: Exercise): boolean => {
+  const bodyweightExercises = [
+    'pushups', 'push-ups', 'push up', 'pullups', 'pull-ups', 'pull up',
+    'chin-ups', 'chin up', 'dips', 'burpees', 'mountain climbers',
+    'jumping jacks', 'plank', 'sit-ups', 'crunches', 'bodyweight squats',
+    'lunges', 'pistol squats', 'handstand push-ups', 'muscle-ups'
+  ];
+  
+  const exerciseName = exercise.name.toLowerCase();
+  return bodyweightExercises.some(bw => exerciseName.includes(bw));
+};
+
 const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route }) => {
   // Get workout data from route params (null for new workout)
   const workoutData = route.params?.workout || null;
@@ -241,19 +253,19 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
   };
 
   // Handle set input changes - now includes unchecking completed sets when edited
-  const handleSetInputChange = (setId: string, field: 'weight' | 'reps', value: string, set: ExerciseSet) => {
+  const handleSetInputChange = async (setId: string, field: 'weight' | 'reps', value: string, set: ExerciseSet, exercise: Exercise) => {
     // If this is a completed set being edited, uncheck it
     if (set.completed && set.is_current_session && value !== '') {
       setWorkout(prev => ({
         ...prev,
-        exercises: prev.exercises.map(exercise => ({
-          ...exercise,
-          sets: exercise.sets.map(s => {
+        exercises: prev.exercises.map(ex => ({
+          ...ex,
+          sets: ex.sets.map(s => {
             if (s.id === setId) {
               return { 
                 ...s, 
-                completed: false, // Uncheck the set
-                is_current_session: false // Remove current session flag
+                completed: false,
+                is_current_session: false
               };
             }
             return s;
@@ -264,6 +276,106 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
     
     // Update the input value
     updateSetInput(setId, field, value);
+    
+    // Auto-complete set when reps are entered (and weight if not bodyweight)
+    if (field === 'reps' && value && parseInt(value) > 0 && isWorkoutActive) {
+      // Small delay to ensure input is updated
+      setTimeout(async () => {
+        const weightInput = getSetInputValue(setId, 'weight');
+        const repsInput = value; // Use the current value being entered
+        
+        const weight = isBodyweightExercise(exercise) ? 0 : (parseFloat(weightInput) || 0);
+        const reps = parseInt(repsInput) || 0;
+        
+        // Check if we have all required data
+        const hasRequiredData = isBodyweightExercise(exercise) 
+          ? reps > 0 
+          : weight > 0 && reps > 0;
+        
+        if (hasRequiredData) {
+          console.log('Auto-completing set...');
+          await completeSetDirectly(exercise, set, weight, reps);
+        }
+      }, 100);
+    }
+  };
+
+  // Add this new function for direct set completion without validation:
+  const completeSetDirectly = async (exercise: Exercise, set: ExerciseSet, weight: number, reps: number) => {
+    try {
+      // Save set to database
+      if (sessionId) {
+        const { error } = await supabase
+          .from('workout_sets')
+          .insert({
+            session_id: sessionId,
+            exercise_id: exercise.original_exercise_id || exercise.id,
+            set_number: set.set_number,
+            weight: weight,
+            reps: reps,
+            rest_seconds: exercise.duration_seconds || 60,
+          });
+
+        if (error) {
+          console.error('Error saving set:', error);
+          return;
+        }
+      }
+
+      // Update local workout state
+      const workoutWithAllInputs = applySetInputsToWorkout(workout);
+      const updatedWorkout = {
+        ...workoutWithAllInputs,
+        exercises: workoutWithAllInputs.exercises.map(ex => {
+          if (ex.id === exercise.id) {
+            return {
+              ...ex,
+              sets: ex.sets.map(s => {
+                if (s.id === set.id) {
+                  return {
+                    ...s,
+                    weight: weight,
+                    reps: reps,
+                    completed: true,
+                    is_current_session: true,
+                    is_previous: false,
+                  };
+                }
+                return s;
+              }),
+            };
+          }
+          return ex;
+        }),
+      };
+
+      setWorkout(updatedWorkout);
+
+      // Update session context and start rest timer
+      if (activeSession) {
+        const exerciseIndex = activeSession.exercises.findIndex(ex => ex.id === exercise.id);
+        const setIndex = exercise.sets.findIndex(s => s.id === set.id);
+        
+        const updatedExercises = [...activeSession.exercises];
+        updatedExercises[exerciseIndex].sets[setIndex] = {
+          ...updatedExercises[exerciseIndex].sets[setIndex],
+          weight: weight,
+          reps: reps,
+          completed: true,
+          is_current_session: true,
+        };
+
+        updateSession({
+          exercises: updatedExercises,
+        });
+
+        console.log('Auto-completed set, starting rest timer...');
+        startRestTimer(exercise.duration_seconds || 60);
+      }
+
+    } catch (error) {
+      console.error('Error auto-completing set:', error);
+    }
   };
 
   // Create workout session in database when workout starts
@@ -411,130 +523,118 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
     }
   };
 
-  // Handle set completion (when checkmark is clicked)
+  // Replace the completeSet function:
   const completeSet = async (exercise: Exercise, set: ExerciseSet) => {
-  console.log(`Completing set ${set.set_number} for exercise ${exercise.name}`);
-  
-  // Auto-start workout if not already active
-  if (!isWorkoutActive) {
-    console.log('Workout not active, auto-starting...');
+    console.log(`Attempting to complete set for ${exercise.name}`);
     
-    try {
-      // Save workout first
-      const savedWorkout = await saveWorkout();
-      if (!savedWorkout) {
-        Alert.alert('Error', 'Failed to save workout. Please try again.');
-        return;
-      }
-
-      // Create database session
-      const dbSessionId = await createWorkoutSessionInDB();
-      if (!dbSessionId) {
-        Alert.alert('Error', 'Failed to create workout session. Please try again.');
-        return;
-      }
-
-      setSessionId(dbSessionId);
-
-      // Start workout session in context
-      startWorkoutSession(savedWorkout);
-      
-      // Give a moment for the workout to start
-      await new Promise(resolve => setTimeout(resolve, 200));
-    } catch (error) {
-      console.error('Error auto-starting workout:', error);
-      Alert.alert('Error', 'Failed to start workout. Please try again.');
+    // Block set completion if workout is not active
+    if (!isWorkoutActive) {
+      Alert.alert(
+        'Start Workout First', 
+        'Please start the workout by pressing the Start button before logging sets.',
+        [{ text: 'OK', style: 'default' }]
+      );
       return;
     }
-  }
 
-  const weightInput = getSetInputValue(set.id, 'weight');
-  const repsInput = getSetInputValue(set.id, 'reps');
-  const weight = parseFloat(weightInput) || 0;
-  const reps = parseInt(repsInput) || 0;
+    const weightInput = getSetInputValue(set.id, 'weight');
+    const repsInput = getSetInputValue(set.id, 'reps');
+    const weight = isBodyweightExercise(exercise) ? 0 : (parseFloat(weightInput) || 0);
+    const reps = parseInt(repsInput) || 0;
 
-  if (weight === 0 && reps === 0) {
-    Alert.alert('Input Required', 'Please enter weight and reps for this set');
-    return;
-  }
-
-  try {
-    // Save set to database
-    if (sessionId) {
-      const { error } = await supabase
-        .from('workout_sets')
-        .insert({
-          session_id: sessionId,
-          exercise_id: exercise.original_exercise_id || exercise.id,
-          set_number: set.set_number,
-          weight: weight,
-          reps: reps,
-          rest_seconds: exercise.duration_seconds || 60,
-        });
-
-      if (error) {
-        console.error('Error saving set:', error);
+    // For bodyweight exercises, only check reps
+    if (isBodyweightExercise(exercise)) {
+      if (reps === 0) {
+        Alert.alert('Input Required', 'Please enter reps for this set');
+        return;
+      }
+    } else {
+      // For weighted exercises, check both weight and reps
+      if (weight === 0 && reps === 0) {
+        Alert.alert('Input Required', 'Please enter weight and reps for this set');
+        return;
       }
     }
 
-    // Apply all current user inputs to preserve edits, then mark this specific set as completed
-    const workoutWithAllInputs = applySetInputsToWorkout(workout);
-    const updatedWorkout = {
-      ...workoutWithAllInputs,
-      exercises: workoutWithAllInputs.exercises.map(ex => {
-        if (ex.id === exercise.id) {
-          return {
-            ...ex,
-            sets: ex.sets.map(s => {
-              if (s.id === set.id) {
-                return {
-                  ...s,
-                  weight: weight,
-                  reps: reps,
-                  completed: true,
-                  is_current_session: true,
-                  is_previous: false,
-                };
-              }
-              return s;
-            }),
-          };
+    console.log(`Completing set with weight: ${weight}, reps: ${reps}`);
+
+    try {
+      // Save set to database
+      if (sessionId) {
+        const { error } = await supabase
+          .from('workout_sets')
+          .insert({
+            session_id: sessionId,
+            exercise_id: exercise.original_exercise_id || exercise.id,
+            set_number: set.set_number,
+            weight: weight,
+            reps: reps,
+            rest_seconds: exercise.duration_seconds || 60,
+          });
+
+        if (error) {
+          console.error('Error saving set:', error);
+        } else {
+          console.log('Set saved to database successfully');
         }
-        return ex;
-      }),
-    };
+      }
 
-    setWorkout(updatedWorkout);
-
-    // Update session context
-    if (activeSession) {
-      const exerciseIndex = activeSession.exercises.findIndex(ex => ex.id === exercise.id);
-      const setIndex = exercise.sets.findIndex(s => s.id === set.id);
-      
-      const updatedExercises = [...activeSession.exercises];
-      updatedExercises[exerciseIndex].sets[setIndex] = {
-        ...updatedExercises[exerciseIndex].sets[setIndex],
-        weight: weight,
-        reps: reps,
-        completed: true,
-        is_current_session: true,
+      // Update local workout state
+      const workoutWithAllInputs = applySetInputsToWorkout(workout);
+      const updatedWorkout = {
+        ...workoutWithAllInputs,
+        exercises: workoutWithAllInputs.exercises.map(ex => {
+          if (ex.id === exercise.id) {
+            return {
+              ...ex,
+              sets: ex.sets.map(s => {
+                if (s.id === set.id) {
+                  return {
+                    ...s,
+                    weight: weight,
+                    reps: reps,
+                    completed: true,
+                    is_current_session: true,
+                    is_previous: false,
+                  };
+                }
+                return s;
+              }),
+            };
+          }
+          return ex;
+        }),
       };
 
-      // Update session with completed set
-      updateSession({
-        exercises: updatedExercises,
-      });
+      setWorkout(updatedWorkout);
 
-      console.log(`Starting rest timer for ${exercise.duration_seconds || 60} seconds`);
-      // Start rest timer after completing a set
-      startRestTimer(exercise.duration_seconds || 60);
+      // Update session context and start rest timer
+      if (activeSession) {
+        const exerciseIndex = activeSession.exercises.findIndex(ex => ex.id === exercise.id);
+        const setIndex = exercise.sets.findIndex(s => s.id === set.id);
+        
+        const updatedExercises = [...activeSession.exercises];
+        updatedExercises[exerciseIndex].sets[setIndex] = {
+          ...updatedExercises[exerciseIndex].sets[setIndex],
+          weight: weight,
+          reps: reps,
+          completed: true,
+          is_current_session: true,
+        };
+
+        updateSession({
+          exercises: updatedExercises,
+        });
+
+        console.log(`Starting rest timer for ${exercise.duration_seconds || 60} seconds`);
+        startRestTimer(exercise.duration_seconds || 60);
+      }
+
+    } catch (error) {
+      console.error('Error completing set:', error);
+      Alert.alert('Error', 'Failed to save set. Please try again.');
     }
-
-  } catch (error) {
-    console.error('Error completing set:', error);
-    Alert.alert('Error', 'Failed to save set. Please try again.');
-  }
-};
+  };
 
   // Get current active set for highlighting
   const getActiveSetInfo = () => {
@@ -1249,10 +1349,10 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
         <View style={styles.setsTable}>
           {/* Table Headers */}
           <View style={styles.tableHeader}>
-            <Text style={styles.columnHeader}>Set</Text>
-            <Text style={styles.columnHeader}>Weight (kg)</Text>
-            <Text style={styles.columnHeader}>Reps</Text>
-            <View style={styles.checkColumn} />
+            <Text style={[styles.columnHeader, styles.setColumn]}>Set</Text>
+            <Text style={[styles.columnHeader, styles.weightColumn]}>Weight (kg)</Text>
+            <Text style={[styles.columnHeader, styles.repsColumn]}>Reps</Text>
+            <Text style={[styles.columnHeader, styles.logColumn]}>Log</Text>
           </View>
 
           {/* Set Rows - Directly Editable */}
@@ -1283,34 +1383,37 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
                 key={set.id} 
                 style={[
                   styles.setRow,
-                  isCurrentSet && styles.currentSetRow // Light blue highlight for current set
+                  isCurrentSet && styles.currentSetRow
                 ]}
               >
-                <Text style={styles.setNumber}>{set.set_number}</Text>
+                <Text style={[styles.setNumber, styles.setColumn]}>{set.set_number}</Text>
                 
-                {/* Weight Input */}
+                {/* Weight Input - Modified for bodyweight exercises */}
                 <TextInput
                   style={[
                     styles.setInput,
-                    isCompletedInSession && styles.currentSessionValueInput
+                    styles.weightColumn,
+                    isCompletedInSession && styles.currentSessionValueInput,
+                    isBodyweightExercise(exercise) && styles.disabledInput
                   ]}
-                  value={displayWeight}
-                  onChangeText={(value) => handleSetInputChange(set.id, 'weight', value, set)}
+                  value={isBodyweightExercise(exercise) ? '-' : displayWeight}
+                  onChangeText={(value) => handleSetInputChange(set.id, 'weight', value, set, exercise)}
                   onFocus={() => handleSetInputFocus(set.id, exercise)}
-                  placeholder={placeholderWeight}
+                  placeholder={isBodyweightExercise(exercise) ? '-' : placeholderWeight}
                   placeholderTextColor={showPreviousWeight ? '#AFAFAF' : '#CCCCCC'}
                   keyboardType="numeric"
-                  editable={true}
+                  editable={!isBodyweightExercise(exercise)}
                 />
                 
                 {/* Reps Input */}
                 <TextInput
                   style={[
                     styles.setInput,
+                    styles.repsColumn,
                     isCompletedInSession && styles.currentSessionValueInput
                   ]}
                   value={displayReps}
-                  onChangeText={(value) => handleSetInputChange(set.id, 'reps', value, set)}
+                  onChangeText={(value) => handleSetInputChange(set.id, 'reps', value, set, exercise)}
                   onFocus={() => handleSetInputFocus(set.id, exercise)}
                   placeholder={placeholderReps}
                   placeholderTextColor={showPreviousReps ? '#AFAFAF' : '#CCCCCC'}
@@ -1320,7 +1423,7 @@ const EditWorkoutScreen: React.FC<EditWorkoutScreenProps> = ({ navigation, route
                 
                 {/* Checkmark */}
                 <TouchableOpacity 
-                  style={styles.checkColumn}
+                  style={[styles.checkColumn, styles.logColumn]}
                   onPress={() => completeSet(exercise, set)}
                 >
                   <Ionicons
@@ -1969,6 +2072,26 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 1000,
+  },
+  setColumn: {
+    width: 50,
+    textAlign: 'center',
+  },
+  weightColumn: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  repsColumn: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  logColumn: {
+    width: 50,
+    textAlign: 'center',
+  },
+  disabledInput: {
+    backgroundColor: '#F8F8F8',
+    color: '#CCCCCC',
   },
 });
 

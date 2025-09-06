@@ -6,6 +6,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { supabase } from './src/services/supabase';
 import { Session } from '@supabase/supabase-js';
 import { WorkoutSessionProvider } from './src/context/WorkoutSessionContext';
+import { AITrainerProvider } from './src/context/AITrainerContext';
 
 // Font loading - combining Google Fonts with custom font
 import { useFonts } from 'expo-font';
@@ -142,36 +143,38 @@ export default function App() {
 
   return (
   <WorkoutSessionProvider>
-    <NavigationContainer>
-      <Stack.Navigator 
-        screenOptions={{ 
-          headerShown: false,
-          cardStyle: { backgroundColor: '#FFFFFF' },
-          animation: 'none',
-          gestureEnabled: false,   
-        }}
-      >
-        {!session ? (
-          // Not logged in flow
-          <>
-            <Stack.Screen name="GetStarted" component={GetStartedScreen} />
-            <Stack.Screen name="Auth" component={AuthStack} />
-          </>
-        ) : !hasCompletedSetup ? (
-          // Logged in but needs to complete setup
-          <Stack.Screen 
-            name="PostAuthSetup" 
-            component={PostAuthSetupScreen}
-            initialParams={{ 
-              onSetupComplete: () => setHasCompletedSetup(true) 
-            }}
-          />
-        ) : (
-          // Ready for main app
-          <Stack.Screen name="Main" component={WorkoutStack} />
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <AITrainerProvider>
+      <NavigationContainer>
+        <Stack.Navigator 
+          screenOptions={{ 
+            headerShown: false,
+            cardStyle: { backgroundColor: '#FFFFFF' },
+            animation: 'none',
+            gestureEnabled: false,   
+          }}
+        >
+          {!session ? (
+            // Not logged in flow
+            <>
+              <Stack.Screen name="GetStarted" component={GetStartedScreen} />
+              <Stack.Screen name="Auth" component={AuthStack} />
+            </>
+          ) : !hasCompletedSetup ? (
+            // Logged in but needs to complete setup
+            <Stack.Screen 
+              name="PostAuthSetup" 
+              component={PostAuthSetupScreen}
+              initialParams={{ 
+                onSetupComplete: () => setHasCompletedSetup(true) 
+              }}
+            />
+          ) : (
+            // Ready for main app
+            <Stack.Screen name="Main" component={WorkoutStack} />
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </AITrainerProvider>
   </WorkoutSessionProvider>
 );
 

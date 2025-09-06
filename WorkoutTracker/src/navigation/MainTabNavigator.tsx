@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 // Import screens
 import WorkoutsScreen from '../screens/main/WorkoutsScreen';
+import AITrainerScreen from '../screens/main/AITrainerScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
@@ -32,6 +33,21 @@ const MainTabNavigator = () => {
                 source={require('../../assets/home.png')}
                 style={styles.homeIcon}
                 resizeMode="contain"
+              />
+            </View>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="AI"
+        component={AITrainerScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <View style={[styles.tabIconContainer, focused && styles.activeTabIcon]}>
+              <Ionicons
+                name="chatbubbles"
+                size={24}
+                color="#FFFFFF"
               />
             </View>
           ),
