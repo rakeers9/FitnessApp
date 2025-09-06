@@ -16,9 +16,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { useAITrainer, ChatMessage, UserPlanInfo } from '../../context/AITrainerContext';
+import { useAITrainer, ChatMessage, UserPlanInfo, WorkoutPlan } from '../../context/AITrainerContextSafe';
 import aiService, { QuickReply, AIServiceResponse } from '../../services/aiService';
 import QuickReplyButtons from '../../components/QuickReplyButtons';
+import PlanPreview from '../../components/PlanPreview';
 
 // Navigation props type
 type AITrainerScreenProps = {
@@ -42,6 +43,9 @@ const AITrainerScreen: React.FC<AITrainerScreenProps> = ({ navigation }) => {
     setPlanDraft,
     clearChat,
     restartAI,
+    savePlan,
+    isInitialized,
+    initializeAI,
   } = useAITrainer();
   
   const [inputText, setInputText] = useState('');
@@ -50,11 +54,28 @@ const AITrainerScreen: React.FC<AITrainerScreenProps> = ({ navigation }) => {
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
-    // Add welcome message if no conversation exists
-    if (messages.length === 0) {
-      addWelcomeMessage();
-    }
-  }, [messages.length]);
+    // Initialize AI on screen load (safe, non-blocking)
+    const initializeAISafely = async () => {
+      try {
+        if (!isInitialized) {
+          await initializeAI();
+        }
+        
+        // Add welcome message if no conversation exists
+        if (messages.length === 0) {
+          addWelcomeMessage();
+        }
+      } catch (error) {
+        console.error('Error initializing AI screen:', error);
+        // Still show welcome message even if initialization fails
+        if (messages.length === 0) {
+          addWelcomeMessage();
+        }
+      }
+    };
+
+    initializeAISafely();
+  }, [isInitialized, messages.length]);
 
   const addWelcomeMessage = () => {
     addMessage({
@@ -172,15 +193,8 @@ const AITrainerScreen: React.FC<AITrainerScreenProps> = ({ navigation }) => {
       setPlanDraft(aiResponse.planData);
       setConversationState('PLAN_PERSISTING');
       
-      // Show plan confirmation
-      setTimeout(() => {
-        addMessage({
-          content: "Perfect! I've saved your workout plan to your calendar. You'll see the scheduled workouts marked on your calendar, and you can start following your program right away!\n\nI've designed this plan specifically for your goals and schedule. Feel free to ask me any questions about how to follow it, or if you'd like to make any adjustments.",
-          sender: 'ai',
-        });
-        setConversationState('PLAN_EXPLAINED');
-        setCurrentQuickReplies([]);
-      }, 2000);
+      // Don't auto-save, let user confirm via the preview
+      // handlePlanPersistence(aiResponse.planData);
     }
 
     setIsLoading(false);
@@ -230,10 +244,123 @@ const AITrainerScreen: React.FC<AITrainerScreenProps> = ({ navigation }) => {
         await handleSendMessageWithInfo(`I have access to ${equipmentText}`, { equipment: reply.data });
         break;
       
+      // Plan editing actions
+      case 'EDIT_EXERCISES':
+        await handleSendMessage('I want to change some exercises in my plan');
+        break;
+      
+      case 'EDIT_FREQUENCY':
+        await handleSendMessage('I want to adjust the training frequency');
+        break;
+      
+      case 'EDIT_DURATION':
+        await handleSendMessage('I want to change the session duration');
+        break;
+      
+      case 'EDIT_SPLIT':
+        await handleSendMessage('I want a different training split');
+        break;
+      
+      // Plan questions
+      case 'QUESTION_PROGRESSION':
+        await handleSendMessage('How should I progress through this plan?');
+        break;
+      
+      case 'QUESTION_FORM':
+        await handleSendMessage('Can you give me form tips for these exercises?');
+        break;
+      
+      case 'QUESTION_MODIFICATIONS':
+        await handleSendMessage('What are some alternatives for these exercises?');
+        break;
+      
+      case 'QUESTION_SCHEDULE':
+        await handleSendMessage('Do you have any scheduling advice for this plan?');
+        break;
+      
       default:
         await handleSendMessage(reply.text);
         break;
     }
+  };
+
+  // Handle plan persistence to database
+  const handlePlanPersistence = async (planData: WorkoutPlan) => {
+    try {
+      const success = await savePlan(planData);
+      
+      setTimeout(() => {
+        if (success) {
+          addMessage({
+            content: "🎉 **Success!** Your workout plan has been saved to your profile!\n\n✅ **What's been done:**\n• Plan added to your calendar with black dots marking workout days\n• All exercises available in your Exercise Library\n• Workouts ready to start in your home tab\n\nYou can now follow your personalized program! Feel free to ask me questions about any exercises, modifications, or how to progress through the plan.",
+            sender: 'ai',
+          });
+        } else {
+          addMessage({
+            content: "⚠️ I had trouble saving your plan to the database. Don't worry - your plan details are still here in our conversation!\n\nYou can manually create these workouts using the information above, or ask me to try saving again. Let me know if you'd like me to help with anything else!",
+            sender: 'ai',
+          });
+        }
+        
+        setConversationState('PLAN_EXPLAINED');
+        setCurrentQuickReplies([]);
+      }, 2500);
+      
+    } catch (error) {
+      console.error('Error in plan persistence:', error);
+      
+      setTimeout(() => {
+        addMessage({
+          content: "I encountered an error while saving your plan. The plan details are still available in our conversation above. Would you like me to try saving again, or would you prefer to proceed with manual workout creation?",
+          sender: 'ai',
+        });
+        setConversationState('PLAN_EXPLAINED');
+        setCurrentQuickReplies([]);
+      }, 1500);
+    }
+  };
+
+  // Plan preview handlers
+  const handleConfirmPlan = async () => {
+    if (!currentPlanDraft) return;
+    
+    setCurrentQuickReplies([]);
+    addMessage({
+      content: "Perfect! I'm saving your workout plan to your profile now...",
+      sender: 'ai',
+    });
+    
+    await handlePlanPersistence(currentPlanDraft);
+  };
+
+  const handleEditPlan = async () => {
+    setCurrentQuickReplies([]);
+    addMessage({
+      content: "Great! I can help you customize your plan. What would you like to change?",
+      sender: 'ai',
+    });
+    
+    setCurrentQuickReplies([
+      { id: 'edit_exercises', text: 'Change exercises', action: 'EDIT_EXERCISES' },
+      { id: 'edit_frequency', text: 'Adjust frequency', action: 'EDIT_FREQUENCY' },
+      { id: 'edit_duration', text: 'Change session length', action: 'EDIT_DURATION' },
+      { id: 'edit_split', text: 'Different split', action: 'EDIT_SPLIT' },
+    ]);
+  };
+
+  const handleAskQuestionAboutPlan = () => {
+    setCurrentQuickReplies([]);
+    addMessage({
+      content: "I'm here to help! What would you like to know about your workout plan?",
+      sender: 'ai',
+    });
+    
+    setCurrentQuickReplies([
+      { id: 'question_progression', text: 'How do I progress?', action: 'QUESTION_PROGRESSION' },
+      { id: 'question_form', text: 'Exercise form tips', action: 'QUESTION_FORM' },
+      { id: 'question_modifications', text: 'Exercise alternatives', action: 'QUESTION_MODIFICATIONS' },
+      { id: 'question_schedule', text: 'Scheduling advice', action: 'QUESTION_SCHEDULE' },
+    ]);
   };
 
   // Menu action handlers
@@ -296,6 +423,9 @@ const AITrainerScreen: React.FC<AITrainerScreenProps> = ({ navigation }) => {
 
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isUser = item.sender === 'user';
+    const showPlanPreview = !isUser && currentPlanDraft && 
+                          conversationState === 'PLAN_PERSISTING' &&
+                          item.content.includes('workout plan is ready');
     
     return (
       <View style={[styles.messageContainer, isUser ? styles.userMessageContainer : styles.aiMessageContainer]}>
@@ -307,6 +437,34 @@ const AITrainerScreen: React.FC<AITrainerScreenProps> = ({ navigation }) => {
         <Text style={[styles.messageTime, isUser ? styles.userMessageTime : styles.aiMessageTime]}>
           {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
+        
+        {/* Show plan preview for plan generation messages */}
+        {showPlanPreview && currentPlanDraft && (
+          <View style={styles.planPreviewContainer}>
+            {/* Wrap in error boundary to prevent crashes */}
+            {(() => {
+              try {
+                return (
+                  <PlanPreview
+                    plan={currentPlanDraft}
+                    onConfirm={handleConfirmPlan}
+                    onEdit={handleEditPlan}
+                    onAskQuestion={handleAskQuestionAboutPlan}
+                  />
+                );
+              } catch (error) {
+                console.error('Error rendering PlanPreview:', error);
+                return (
+                  <View style={{ padding: 16, backgroundColor: '#FEE2E2', borderRadius: 8 }}>
+                    <Text style={{ color: '#DC2626' }}>
+                      Error loading plan preview. Plan data is still available above.
+                    </Text>
+                  </View>
+                );
+              }
+            })()}
+          </View>
+        )}
       </View>
     );
   };
@@ -553,6 +711,12 @@ const styles = StyleSheet.create({
   aiMessageTime: {
     alignSelf: 'flex-start',
   },
+
+  // Plan Preview
+  planPreviewContainer: {
+    marginTop: 8,
+    marginHorizontal: 0,
+  },
   
   // Loading
   loadingContainer: {
@@ -615,9 +779,9 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     alignItems: 'flex-end',
-    paddingTop: 80,
+    paddingTop: 100,
     paddingRight: 20,
   },
   menuModal: {

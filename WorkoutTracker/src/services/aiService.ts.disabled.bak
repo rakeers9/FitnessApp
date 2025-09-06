@@ -1,6 +1,7 @@
 // src/services/aiService.ts
 
-import { ConversationState, ChatMessage, UserPlanInfo, WorkoutPlan } from '../context/AITrainerContext';
+import { ConversationState, ChatMessage, UserPlanInfo, WorkoutPlan } from '../context/AITrainerContextSafe';
+import { supabase } from './supabase';
 
 // OpenAI API configuration
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
@@ -75,6 +76,12 @@ Ask 1-2 questions at a time. Be encouraging and explain why you need each piece 
 
 Be encouraging and emphasize they can always ask questions.`
 };
+
+// Available muscle groups (from ExerciseLibraryScreen)
+const VALID_MUSCLE_GROUPS = [
+  'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms',
+  'Abs', 'Quads', 'Hamstrings', 'Calves', 'Glutes'
+];
 
 // Intent detection patterns
 const PLAN_INTENT_PATTERNS = [
@@ -272,10 +279,26 @@ class AIService {
   // Generate workout plan
   private async handlePlanBuilding(userPlanInfo: UserPlanInfo): Promise<AIServiceResponse> {
     try {
-      const planData = await this.generateWorkoutPlan(userPlanInfo);
+      // For now, use fallback plan for testing (remove this when OpenAI is configured)
+      const planData = this.generateFallbackPlan(userPlanInfo);
+      
+      // Build response message (skip exercise checking for now to prevent blocking)
+      let responseMessage = `🎉 **Your personalized workout plan is ready!**\n\n`;
+      responseMessage += `**${planData.plan.name}**\n`;
+      responseMessage += `• ${planData.plan.length_weeks} weeks, ${planData.plan.days_per_week} days per week\n`;
+      responseMessage += `• Starting ${planData.plan.start_date}\n`;
+      responseMessage += `• ${planData.workouts.length} different workout${planData.workouts.length > 1 ? 's' : ''}\n\n`;
+      
+      // Skip new exercise detection for testing to prevent blocking
+      // const newExercises = await this.getNewlyCreatedExercises(planData);
+      // if (newExercises.length > 0) { ... }
+      
+      responseMessage += `**Progression:** ${planData.plan.progression_model}\n\n`;
+      responseMessage += `**Notes:** ${planData.plan.notes}\n\n`;
+      responseMessage += `Take a look at your plan below and let me know what you think!`;
       
       return {
-        content: `Great! I've created your ${planData.plan.name}. This ${planData.plan.length_weeks}-week program will help you achieve your ${userPlanInfo.goal} goals with ${planData.plan.days_per_week} workouts per week.\n\nTake a look at your plan and let me know if you'd like any adjustments!`,
+        content: responseMessage,
         newState: 'PLAN_PERSISTING',
         planData
       };
@@ -399,10 +422,11 @@ class AIService {
   // Generate workout plan using AI
   private async generateWorkoutPlan(userPlanInfo: UserPlanInfo): Promise<WorkoutPlan> {
     const planPrompt = this.buildPlanGenerationPrompt(userPlanInfo);
+    const systemPrompt = this.buildPlanSystemPrompt();
     
     try {
       const response = await this.callOpenAI(
-        `You are a professional workout plan generator. Generate a detailed workout plan in JSON format.`,
+        systemPrompt,
         planPrompt,
         []
       );
@@ -411,7 +435,12 @@ class AIService {
       const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/);
       const jsonString = jsonMatch ? jsonMatch[1] : response;
       
-      return JSON.parse(jsonString);
+      const plan = JSON.parse(jsonString);
+      
+      // Validate and process the plan
+      const validatedPlan = await this.validateAndProcessPlan(plan, userPlanInfo);
+      
+      return validatedPlan;
     } catch (error) {
       console.error('Plan generation parsing error:', error);
       // Return a fallback plan
@@ -419,60 +448,356 @@ class AIService {
     }
   }
 
+  // Build system prompt for plan generation
+  private buildPlanSystemPrompt(): string {
+    return `You are a professional fitness trainer and workout plan generator. Your task is to create detailed, safe, and effective workout plans.
+
+CRITICAL CONSTRAINTS:
+1. ONLY use exercises that target these muscle groups: ${VALID_MUSCLE_GROUPS.join(', ')}
+2. NEVER create exercises with invalid muscle groups
+3. For each exercise, you MUST specify which muscle groups it targets
+4. Ensure exercises match the available equipment
+5. Follow progressive overload principles
+6. Include proper warm-up and cool-down guidance
+
+EXERCISE REQUIREMENTS:
+- Use compound movements when possible
+- Include specific sets, reps, and rest times
+- Provide exercise variations for different experience levels
+- Ensure exercises are safe for the user's constraints
+
+PLAN STRUCTURE:
+- Create balanced workouts that don't overtrain muscle groups
+- Distribute volume appropriately across the week
+- Include progression strategies (weight, reps, sets)
+- Provide clear workout titles and organization
+
+Return ONLY valid JSON following the exact schema provided. No additional text.`;
+  }
+
   // Build prompt for plan generation
   private buildPlanGenerationPrompt(userPlanInfo: UserPlanInfo): string {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() + ((1 + 7 - startDate.getDay()) % 7)); // Next Monday
+    const startDate = userPlanInfo.startDate ? new Date(userPlanInfo.startDate) : new Date();
+    if (!userPlanInfo.startDate) {
+      startDate.setDate(startDate.getDate() + ((1 + 7 - startDate.getDay()) % 7)); // Next Monday
+    }
+    
+    const planLength = userPlanInfo.planLength || 8;
     
     return `Generate a workout plan with these specifications:
 
-User Info:
-- Goal: ${userPlanInfo.goal}
-- Experience: ${userPlanInfo.experience}
-- Days per week: ${userPlanInfo.daysPerWeek}
-- Session length: ${userPlanInfo.sessionLength} minutes
-- Equipment: ${userPlanInfo.equipment?.join(', ')}
-- Constraints: ${userPlanInfo.constraints?.join(', ') || 'none'}
+USER PROFILE:
+- Primary Goal: ${userPlanInfo.goal}
+- Experience Level: ${userPlanInfo.experience}
+- Training Frequency: ${userPlanInfo.daysPerWeek} days per week
+- Session Duration: ${userPlanInfo.sessionLength} minutes
+- Available Equipment: ${userPlanInfo.equipment?.join(', ') || 'bodyweight only'}
+- Training Constraints: ${userPlanInfo.constraints?.join(', ') || 'none'}
+- Split Preference: ${userPlanInfo.preferences?.splitType || 'optimal for goal'}
+- Favorite Exercises: ${userPlanInfo.preferences?.favoriteExercises?.join(', ') || 'none specified'}
+- Exercises to Avoid: ${userPlanInfo.preferences?.avoidExercises?.join(', ') || 'none'}
 
-Requirements:
-- Return ONLY valid JSON matching this exact schema
-- Start date: ${startDate.toISOString().split('T')[0]}
-- Plan length: 8 weeks
-- Include proper exercise progression
-- Include rest times for each exercise
-- Assign specific calendar dates
+PLAN REQUIREMENTS:
+- Start Date: ${startDate.toISOString().split('T')[0]}
+- Plan Duration: ${planLength} weeks
+- Generate ${userPlanInfo.daysPerWeek} different workout templates
+- Assign workouts to specific calendar dates for the entire ${planLength}-week period
+- Include detailed exercise instructions with proper muscle group targeting
+
+EXERCISE FORMAT - Each exercise MUST include:
+- name: Clear, specific exercise name
+- sets: Number of sets (integer)
+- reps: Rep range (e.g., "8-12", "12-15", "20")
+- rest_seconds: Rest time between sets (30-300 seconds)
+- muscle_groups: Array of targeted muscles from valid list
+- notes: Brief form cues or modifications
+
+VALID MUSCLE GROUPS ONLY: ${VALID_MUSCLE_GROUPS.join(', ')}
 
 \`\`\`json
 {
   "plan": {
-    "name": "Plan Name",
+    "name": "8-Week ${userPlanInfo.goal} Plan",
     "start_date": "${startDate.toISOString().split('T')[0]}",
-    "length_weeks": 8,
+    "length_weeks": ${planLength},
     "days_per_week": ${userPlanInfo.daysPerWeek},
-    "progression_model": "Progression description",
-    "notes": "Important notes"
+    "progression_model": "Progressive overload description",
+    "notes": "Plan overview and important notes"
   },
   "workouts": [
     {
       "day_of_week": "Mon",
-      "title": "Workout Name",
+      "title": "Workout A",
       "estimated_minutes": ${userPlanInfo.sessionLength},
       "exercises": [
         {
-          "name": "Exercise Name",
-          "sets": 3,
-          "reps": "8-12",
-          "rest_seconds": 90,
-          "notes": "Exercise notes"
+          "name": "Barbell Bench Press",
+          "sets": 4,
+          "reps": "6-10",
+          "rest_seconds": 120,
+          "muscle_groups": ["Chest", "Shoulders", "Triceps"],
+          "notes": "Control the weight, full range of motion"
         }
       ]
     }
   ],
   "calendar_assignments": [
-    {"date": "2025-01-06", "workout_title": "Workout Name"}
+    {"date": "${startDate.toISOString().split('T')[0]}", "workout_title": "Workout A"}
   ]
 }
 \`\`\``;
+  }
+
+  // Validate and process the generated plan
+  private async validateAndProcessPlan(plan: WorkoutPlan, userPlanInfo: UserPlanInfo): Promise<WorkoutPlan> {
+    // Validate plan structure
+    if (!plan.plan || !plan.workouts || !plan.calendar_assignments) {
+      throw new Error('Invalid plan structure');
+    }
+
+    // Validate muscle groups in exercises
+    for (const workout of plan.workouts) {
+      for (const exercise of workout.exercises) {
+        if (exercise.muscle_groups) {
+          // Filter out invalid muscle groups
+          exercise.muscle_groups = exercise.muscle_groups.filter(muscle => 
+            VALID_MUSCLE_GROUPS.includes(muscle)
+          );
+        }
+      }
+    }
+
+    // Process and create new exercises if needed
+    await this.processExercisesInPlan(plan);
+
+    // Generate full calendar assignments if not provided
+    if (plan.calendar_assignments.length === 0) {
+      plan.calendar_assignments = this.generateCalendarAssignments(
+        plan.plan.start_date,
+        plan.plan.length_weeks,
+        plan.plan.days_per_week,
+        plan.workouts
+      );
+    }
+
+    return plan;
+  }
+
+  // Generate fallback plan for error cases
+  private generateFallbackPlan(userPlanInfo: UserPlanInfo): WorkoutPlan {
+    const startDate = userPlanInfo.startDate ? new Date(userPlanInfo.startDate) : new Date();
+    if (!userPlanInfo.startDate) {
+      startDate.setDate(startDate.getDate() + ((1 + 7 - startDate.getDay()) % 7)); // Next Monday
+    }
+
+    const daysPerWeek = userPlanInfo.daysPerWeek || 3;
+    const sessionLength = userPlanInfo.sessionLength || 45;
+    const planLength = userPlanInfo.planLength || 8;
+
+    // Create simple fallback workouts based on experience level
+    const workouts = this.createFallbackWorkouts(daysPerWeek, sessionLength, userPlanInfo);
+    const calendarAssignments = this.generateCalendarAssignments(
+      startDate.toISOString().split('T')[0],
+      planLength,
+      daysPerWeek,
+      workouts
+    );
+
+    return {
+      plan: {
+        name: `${planLength}-Week ${userPlanInfo.goal || 'Fitness'} Plan`,
+        start_date: startDate.toISOString().split('T')[0],
+        length_weeks: planLength,
+        days_per_week: daysPerWeek,
+        progression_model: 'Progressive overload - increase weight, reps, or sets each week',
+        notes: 'Start with lighter weights to master form, then progressively increase intensity.'
+      },
+      workouts,
+      calendar_assignments: calendarAssignments
+    };
+  }
+
+  // Create fallback workouts based on user preferences
+  private createFallbackWorkouts(daysPerWeek: number, sessionLength: number, userPlanInfo: UserPlanInfo): any[] {
+    const hasGym = userPlanInfo.equipment?.includes('gym') || userPlanInfo.equipment?.includes('barbell');
+    
+    if (daysPerWeek <= 3) {
+      // Full body workouts
+      return [
+        {
+          day_of_week: 'Mon',
+          title: 'Full Body A',
+          estimated_minutes: sessionLength,
+          exercises: hasGym ? [
+            { name: 'Barbell Squat', sets: 3, reps: '8-12', rest_seconds: 120, muscle_groups: ['Quads', 'Glutes'] },
+            { name: 'Bench Press', sets: 3, reps: '8-12', rest_seconds: 120, muscle_groups: ['Chest', 'Shoulders', 'Triceps'] },
+            { name: 'Bent-Over Row', sets: 3, reps: '8-12', rest_seconds: 90, muscle_groups: ['Back', 'Biceps'] },
+            { name: 'Overhead Press', sets: 3, reps: '8-12', rest_seconds: 90, muscle_groups: ['Shoulders', 'Triceps'] },
+            { name: 'Plank', sets: 3, reps: '30-60s', rest_seconds: 60, muscle_groups: ['Abs'] }
+          ] : [
+            { name: 'Bodyweight Squat', sets: 3, reps: '12-20', rest_seconds: 60, muscle_groups: ['Quads', 'Glutes'] },
+            { name: 'Push-ups', sets: 3, reps: '8-15', rest_seconds: 60, muscle_groups: ['Chest', 'Shoulders', 'Triceps'] },
+            { name: 'Pike Push-ups', sets: 3, reps: '5-12', rest_seconds: 60, muscle_groups: ['Shoulders', 'Triceps'] },
+            { name: 'Plank', sets: 3, reps: '30-60s', rest_seconds: 60, muscle_groups: ['Abs'] },
+            { name: 'Glute Bridges', sets: 3, reps: '15-25', rest_seconds: 45, muscle_groups: ['Glutes', 'Hamstrings'] }
+          ]
+        }
+      ];
+    } else {
+      // Upper/Lower split
+      return [
+        {
+          day_of_week: 'Mon',
+          title: 'Upper Body',
+          estimated_minutes: sessionLength,
+          exercises: hasGym ? [
+            { name: 'Bench Press', sets: 4, reps: '8-12', rest_seconds: 120, muscle_groups: ['Chest', 'Shoulders', 'Triceps'] },
+            { name: 'Bent-Over Row', sets: 4, reps: '8-12', rest_seconds: 90, muscle_groups: ['Back', 'Biceps'] },
+            { name: 'Overhead Press', sets: 3, reps: '8-12', rest_seconds: 90, muscle_groups: ['Shoulders', 'Triceps'] },
+            { name: 'Lat Pulldown', sets: 3, reps: '10-15', rest_seconds: 75, muscle_groups: ['Back', 'Biceps'] }
+          ] : [
+            { name: 'Push-ups', sets: 4, reps: '8-15', rest_seconds: 60, muscle_groups: ['Chest', 'Shoulders', 'Triceps'] },
+            { name: 'Pike Push-ups', sets: 3, reps: '5-12', rest_seconds: 60, muscle_groups: ['Shoulders', 'Triceps'] },
+            { name: 'Tricep Dips', sets: 3, reps: '8-15', rest_seconds: 60, muscle_groups: ['Triceps', 'Shoulders'] }
+          ]
+        },
+        {
+          day_of_week: 'Tue',
+          title: 'Lower Body',
+          estimated_minutes: sessionLength,
+          exercises: hasGym ? [
+            { name: 'Barbell Squat', sets: 4, reps: '8-12', rest_seconds: 120, muscle_groups: ['Quads', 'Glutes'] },
+            { name: 'Romanian Deadlift', sets: 3, reps: '10-15', rest_seconds: 90, muscle_groups: ['Hamstrings', 'Glutes'] },
+            { name: 'Walking Lunges', sets: 3, reps: '12-16', rest_seconds: 75, muscle_groups: ['Quads', 'Glutes'] }
+          ] : [
+            { name: 'Bodyweight Squat', sets: 4, reps: '15-25', rest_seconds: 60, muscle_groups: ['Quads', 'Glutes'] },
+            { name: 'Single-Leg Glute Bridge', sets: 3, reps: '10-15', rest_seconds: 60, muscle_groups: ['Glutes', 'Hamstrings'] },
+            { name: 'Reverse Lunges', sets: 3, reps: '12-16', rest_seconds: 60, muscle_groups: ['Quads', 'Glutes'] }
+          ]
+        }
+      ];
+    }
+  }
+
+  // Generate calendar assignments for the plan
+  private generateCalendarAssignments(startDate: string, lengthWeeks: number, daysPerWeek: number, workouts: any[]): any[] {
+    const assignments = [];
+    const start = new Date(startDate);
+    const workoutDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    
+    // Simple pattern: distribute workouts evenly throughout the week
+    const daysBetween = Math.floor(7 / daysPerWeek);
+    const selectedDays = [];
+    for (let i = 0; i < daysPerWeek; i++) {
+      selectedDays.push(workoutDays[i * daysBetween]);
+    }
+
+    for (let week = 0; week < lengthWeeks; week++) {
+      for (let dayIndex = 0; dayIndex < daysPerWeek; dayIndex++) {
+        const workoutDate = new Date(start);
+        workoutDate.setDate(start.getDate() + (week * 7) + (dayIndex * daysBetween));
+        
+        const workoutTitle = workouts[dayIndex % workouts.length]?.title || `Workout ${dayIndex + 1}`;
+        
+        assignments.push({
+          date: workoutDate.toISOString().split('T')[0],
+          workout_title: workoutTitle
+        });
+      }
+    }
+
+    return assignments;
+  }
+
+  // Process exercises in plan and create new ones if needed
+  private async processExercisesInPlan(plan: WorkoutPlan): Promise<void> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Get existing exercises
+      const { data: existingExercises } = await supabase
+        .from('exercises')
+        .select('name, id, muscle_groups');
+
+      const existingExerciseNames = new Set(
+        existingExercises?.map(ex => ex.name.toLowerCase()) || []
+      );
+
+      const exercisesToCreate = [];
+
+      // Check each exercise in the plan
+      for (const workout of plan.workouts) {
+        for (const exercise of workout.exercises) {
+          const exerciseName = exercise.name.toLowerCase();
+          
+          // If exercise doesn't exist, prepare to create it
+          if (!existingExerciseNames.has(exerciseName)) {
+            exercisesToCreate.push({
+              name: exercise.name,
+              muscle_groups: exercise.muscle_groups || ['Chest'], // Default fallback
+              is_custom: true,
+              created_by: user.id,
+              equipment: this.inferEquipmentFromExerciseName(exercise.name)
+            });
+          }
+        }
+      }
+
+      // Create new exercises if any
+      if (exercisesToCreate.length > 0) {
+        const { error } = await supabase
+          .from('exercises')
+          .insert(exercisesToCreate);
+
+        if (error) {
+          console.error('Error creating exercises:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing exercises in plan:', error);
+    }
+  }
+
+  // Infer equipment from exercise name
+  private inferEquipmentFromExerciseName(exerciseName: string): string | null {
+    const name = exerciseName.toLowerCase();
+    if (name.includes('barbell')) return 'Barbell';
+    if (name.includes('dumbbell')) return 'Dumbbells';
+    if (name.includes('machine')) return 'Machine';
+    if (name.includes('cable')) return 'Cable';
+    if (name.includes('bodyweight') || name.includes('push-up') || name.includes('pull-up')) return 'Bodyweight';
+    return null;
+  }
+
+  // Get list of newly created exercises
+  private async getNewlyCreatedExercises(plan: WorkoutPlan): Promise<string[]> {
+    try {
+      const { data: existingExercises } = await supabase
+        .from('exercises')
+        .select('name');
+
+      const existingExerciseNames = new Set(
+        existingExercises?.map(ex => ex.name.toLowerCase()) || []
+      );
+
+      const allPlanExercises = new Set<string>();
+      
+      // Collect all unique exercise names from the plan
+      for (const workout of plan.workouts) {
+        for (const exercise of workout.exercises) {
+          allPlanExercises.add(exercise.name);
+        }
+      }
+
+      // Return exercises that don't exist in the database
+      return Array.from(allPlanExercises).filter(exerciseName => 
+        !existingExerciseNames.has(exerciseName.toLowerCase())
+      );
+    } catch (error) {
+      console.error('Error getting newly created exercises:', error);
+      return [];
+    }
   }
 
   // Call OpenAI API with retry logic
@@ -531,46 +856,6 @@ Requirements:
     throw new Error('Max retries exceeded');
   }
 
-  // Generate a fallback plan if AI generation fails
-  private generateFallbackPlan(userPlanInfo: UserPlanInfo): WorkoutPlan {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() + ((1 + 7 - startDate.getDay()) % 7));
-    
-    const isBodyweight = userPlanInfo.equipment?.includes('bodyweight') && !userPlanInfo.equipment.includes('gym');
-    
-    return {
-      plan: {
-        name: `${userPlanInfo.daysPerWeek}-Day ${userPlanInfo.goal === 'muscle gain' ? 'Hypertrophy' : 'Fitness'} Plan`,
-        start_date: startDate.toISOString().split('T')[0],
-        length_weeks: 8,
-        days_per_week: userPlanInfo.daysPerWeek || 3,
-        progression_model: "Increase reps by 1-2 each week, or add resistance when you can complete the maximum reps",
-        notes: "Start conservatively and focus on proper form. Rest 48 hours between sessions."
-      },
-      workouts: [
-        {
-          day_of_week: "Mon",
-          title: "Full Body A",
-          estimated_minutes: userPlanInfo.sessionLength || 45,
-          exercises: isBodyweight ? [
-            { name: "Push-ups", sets: 3, reps: "8-15", rest_seconds: 90 },
-            { name: "Bodyweight Squats", sets: 3, reps: "12-20", rest_seconds: 90 },
-            { name: "Pike Push-ups", sets: 3, reps: "5-12", rest_seconds: 90 },
-            { name: "Lunges", sets: 3, reps: "10-16 each leg", rest_seconds: 90 },
-            { name: "Plank", sets: 3, reps: "30-60 seconds", rest_seconds: 60 }
-          ] : [
-            { name: "Goblet Squats", sets: 3, reps: "8-12", rest_seconds: 90 },
-            { name: "Dumbbell Press", sets: 3, reps: "8-12", rest_seconds: 90 },
-            { name: "Dumbbell Rows", sets: 3, reps: "8-12", rest_seconds: 90 },
-            { name: "Romanian Deadlift", sets: 3, reps: "8-12", rest_seconds: 90 }
-          ]
-        }
-      ],
-      calendar_assignments: [
-        { date: startDate.toISOString().split('T')[0], workout_title: "Full Body A" }
-      ]
-    };
-  }
 
   // Error response
   private getErrorResponse(): AIServiceResponse {

@@ -6,7 +6,8 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { supabase } from './src/services/supabase';
 import { Session } from '@supabase/supabase-js';
 import { WorkoutSessionProvider } from './src/context/WorkoutSessionContext';
-import { AITrainerProvider } from './src/context/AITrainerContext';
+// Temporarily disabled again - still causing freezing
+// import { AITrainerProvider } from './src/context/AITrainerContextSafe';
 
 // Font loading - combining Google Fonts with custom font
 import { useFonts } from 'expo-font';
@@ -142,9 +143,9 @@ export default function App() {
   }
 
   return (
-  <WorkoutSessionProvider>
-    <AITrainerProvider>
-      <NavigationContainer>
+    <WorkoutSessionProvider>
+      {/* <AITrainerProvider> */}
+        <NavigationContainer>
         <Stack.Navigator 
           screenOptions={{ 
             headerShown: false,
@@ -174,8 +175,8 @@ export default function App() {
           )}
         </Stack.Navigator>
       </NavigationContainer>
-    </AITrainerProvider>
-  </WorkoutSessionProvider>
-);
+      {/* </AITrainerProvider> */}
+    </WorkoutSessionProvider>
+  );
 
 }

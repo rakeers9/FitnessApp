@@ -1,0 +1,381 @@
+// src/components/PlanPreview.tsx
+
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { WorkoutPlan, WorkoutTemplate, Exercise } from '../context/AITrainerContextSafe';
+
+interface PlanPreviewProps {
+  plan: WorkoutPlan;
+  onConfirm: () => void;
+  onEdit: () => void;
+  onAskQuestion: () => void;
+}
+
+const PlanPreview: React.FC<PlanPreviewProps> = ({ 
+  plan, 
+  onConfirm, 
+  onEdit, 
+  onAskQuestion 
+}) => {
+  const renderExercise = (exercise: Exercise, index: number) => (
+    <View key={index} style={styles.exerciseRow}>
+      <View style={styles.exerciseHeader}>
+        <Text style={styles.exerciseName}>{exercise.name}</Text>
+        {exercise.muscle_groups && (
+          <Text style={styles.muscleGroups}>
+            {exercise.muscle_groups.join(', ')}
+          </Text>
+        )}
+      </View>
+      
+      <View style={styles.exerciseDetails}>
+        <View style={styles.exerciseDetailItem}>
+          <Ionicons name="fitness" size={16} color="#6B7280" />
+          <Text style={styles.exerciseDetailText}>
+            {exercise.sets} sets × {exercise.reps} reps
+          </Text>
+        </View>
+        
+        <View style={styles.exerciseDetailItem}>
+          <Ionicons name="time" size={16} color="#6B7280" />
+          <Text style={styles.exerciseDetailText}>
+            {exercise.rest_seconds}s rest
+          </Text>
+        </View>
+      </View>
+      
+      {exercise.notes && (
+        <Text style={styles.exerciseNotes}>💡 {exercise.notes}</Text>
+      )}
+    </View>
+  );
+
+  const renderWorkout = (workout: WorkoutTemplate, index: number) => (
+    <View key={index} style={styles.workoutCard}>
+      <View style={styles.workoutHeader}>
+        <Text style={styles.workoutTitle}>{workout.title}</Text>
+        <Text style={styles.workoutDay}>{workout.day_of_week}</Text>
+      </View>
+      
+      <View style={styles.workoutMeta}>
+        <View style={styles.workoutMetaItem}>
+          <Ionicons name="time-outline" size={14} color="#6B7280" />
+          <Text style={styles.workoutMetaText}>
+            ~{workout.estimated_minutes} min
+          </Text>
+        </View>
+        
+        <View style={styles.workoutMetaItem}>
+          <Ionicons name="barbell-outline" size={14} color="#6B7280" />
+          <Text style={styles.workoutMetaText}>
+            {workout.exercises.length} exercises
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.exercisesList}>
+        {workout.exercises.map(renderExercise)}
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      {/* Plan Header */}
+      <View style={styles.planHeader}>
+        <Text style={styles.planTitle}>📋 {plan.plan.name}</Text>
+        <Text style={styles.planSubtitle}>
+          {plan.plan.length_weeks} weeks • {plan.plan.days_per_week} days/week
+        </Text>
+        <Text style={styles.planDates}>
+          Starting {new Date(plan.plan.start_date).toLocaleDateString()}
+        </Text>
+      </View>
+
+      {/* Progression Model */}
+      <View style={styles.progressionSection}>
+        <Text style={styles.sectionTitle}>📈 Progression Strategy</Text>
+        <Text style={styles.progressionText}>{plan.plan.progression_model}</Text>
+      </View>
+
+      {/* Important Notes */}
+      {plan.plan.notes && (
+        <View style={styles.notesSection}>
+          <Text style={styles.sectionTitle}>⚠️ Important Notes</Text>
+          <Text style={styles.notesText}>{plan.plan.notes}</Text>
+        </View>
+      )}
+
+      {/* Workouts */}
+      <View style={styles.workoutsSection}>
+        <Text style={styles.sectionTitle}>
+          💪 Your Workouts ({plan.workouts.length})
+        </Text>
+        
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={styles.workoutsScroll}
+        >
+          {plan.workouts.map(renderWorkout)}
+        </ScrollView>
+      </View>
+
+      {/* Action Buttons */}
+      <View style={styles.actionButtons}>
+        <TouchableOpacity 
+          style={[styles.actionButton, styles.editButton]} 
+          onPress={onEdit}
+        >
+          <Ionicons name="create-outline" size={20} color="#3B82F6" />
+          <Text style={styles.editButtonText}>Edit Plan</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.actionButton, styles.questionButton]} 
+          onPress={onAskQuestion}
+        >
+          <Ionicons name="help-circle-outline" size={20} color="#6B7280" />
+          <Text style={styles.questionButtonText}>Ask Question</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.actionButton, styles.confirmButton]} 
+          onPress={onConfirm}
+        >
+          <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+          <Text style={styles.confirmButtonText}>Confirm Plan</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    margin: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+
+  // Plan Header
+  planHeader: {
+    marginBottom: 16,
+  },
+  planTitle: {
+    fontSize: 18,
+    fontFamily: 'Poppins-ExtraBold',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  planSubtitle: {
+    fontSize: 14,
+    fontFamily: 'Poppins-Regular',
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  planDates: {
+    fontSize: 12,
+    fontFamily: 'Poppins-Regular',
+    color: '#9CA3AF',
+  },
+
+  // Sections
+  sectionTitle: {
+    fontSize: 14,
+    fontFamily: 'Poppins-ExtraBold',
+    color: '#374151',
+    marginBottom: 8,
+  },
+
+  progressionSection: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  progressionText: {
+    fontSize: 13,
+    fontFamily: 'Poppins-Regular',
+    color: '#1E40AF',
+    lineHeight: 18,
+  },
+
+  notesSection: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  notesText: {
+    fontSize: 13,
+    fontFamily: 'Poppins-Regular',
+    color: '#92400E',
+    lineHeight: 18,
+  },
+
+  // Workouts
+  workoutsSection: {
+    marginBottom: 16,
+  },
+  workoutsScroll: {
+    marginTop: 8,
+  },
+
+  workoutCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    marginRight: 12,
+    width: 280,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+
+  workoutHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  workoutTitle: {
+    fontSize: 16,
+    fontFamily: 'Poppins-ExtraBold',
+    color: '#111827',
+    flex: 1,
+  },
+  workoutDay: {
+    fontSize: 12,
+    fontFamily: 'Poppins-ExtraBold',
+    color: '#3B82F6',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+
+  workoutMeta: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  workoutMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  workoutMetaText: {
+    fontSize: 12,
+    fontFamily: 'Poppins-Regular',
+    color: '#6B7280',
+    marginLeft: 4,
+  },
+
+  // Exercises
+  exercisesList: {
+    gap: 8,
+  },
+  exerciseRow: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 6,
+    padding: 8,
+  },
+
+  exerciseHeader: {
+    marginBottom: 4,
+  },
+  exerciseName: {
+    fontSize: 14,
+    fontFamily: 'Poppins-ExtraBold',
+    color: '#111827',
+  },
+  muscleGroups: {
+    fontSize: 11,
+    fontFamily: 'Poppins-Regular',
+    color: '#9CA3AF',
+    marginTop: 1,
+  },
+
+  exerciseDetails: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 4,
+  },
+  exerciseDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  exerciseDetailText: {
+    fontSize: 12,
+    fontFamily: 'Poppins-Regular',
+    color: '#6B7280',
+    marginLeft: 4,
+  },
+
+  exerciseNotes: {
+    fontSize: 11,
+    fontFamily: 'Poppins-Regular',
+    color: '#059669',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+
+  // Action Buttons
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 6,
+  },
+
+  editButton: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+  },
+  editButtonText: {
+    fontSize: 13,
+    fontFamily: 'Poppins-ExtraBold',
+    color: '#3B82F6',
+  },
+
+  questionButton: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  questionButtonText: {
+    fontSize: 13,
+    fontFamily: 'Poppins-ExtraBold',
+    color: '#6B7280',
+  },
+
+  confirmButton: {
+    backgroundColor: '#10B981',
+  },
+  confirmButtonText: {
+    fontSize: 13,
+    fontFamily: 'Poppins-ExtraBold',
+    color: '#FFFFFF',
+  },
+});
+
+export default PlanPreview;

@@ -1,0 +1,332 @@
+// src/context/AITrainerContextSafe.tsx
+
+import React, { createContext, useContext, useState } from 'react';
+
+// Conversation states based on the state machine from the requirements
+export type ConversationState = 
+  | 'IDLE' 
+  | 'PLAN_CONFIRM' 
+  | 'PLAN_INFO_GATHER' 
+  | 'PLAN_BUILDING' 
+  | 'PLAN_PERSISTING' 
+  | 'PLAN_EXPLAINED'
+  | 'STOP_PLAN_CONFIRM';
+
+// Message types
+export interface ChatMessage {
+  id: string;
+  content: string;
+  sender: 'user' | 'ai';
+  timestamp: Date;
+  metadata?: any;
+}
+
+// User information collected for plan generation
+export interface UserPlanInfo {
+  goal?: string; // fat loss, muscle gain, strength, endurance, general fitness
+  experience?: string; // beginner, intermediate, advanced
+  daysPerWeek?: number; // 2-6
+  availableDays?: string[]; // ['Monday', 'Wednesday', 'Friday']
+  sessionLength?: number; // 30, 45, 60, 90 minutes
+  equipment?: string[]; // ['gym', 'barbell', 'dumbbells', 'machines', 'bands', 'bodyweight']
+  constraints?: string[]; // injuries, movements to avoid
+  preferences?: {
+    splitType?: string; // full-body, upper-lower, PPL, body-part
+    favoriteExercises?: string[];
+    avoidExercises?: string[];
+  };
+  startDate?: string; // ISO date string
+  planLength?: number; // weeks, default 8
+}
+
+// Generated workout plan structure
+export interface WorkoutPlan {
+  plan: {
+    name: string;
+    start_date: string;
+    length_weeks: number;
+    days_per_week: number;
+    progression_model: string;
+    notes: string;
+  };
+  workouts: WorkoutTemplate[];
+  calendar_assignments: CalendarAssignment[];
+}
+
+export interface WorkoutTemplate {
+  day_of_week: string;
+  title: string;
+  estimated_minutes: number;
+  exercises: Exercise[];
+}
+
+export interface Exercise {
+  name: string;
+  sets: number;
+  reps: string;
+  rir?: number;
+  rest_seconds: number;
+  tempo?: string;
+  notes?: string;
+  muscle_groups?: string[];
+}
+
+export interface CalendarAssignment {
+  date: string;
+  workout_title: string;
+}
+
+// Context state interface
+interface AITrainerState {
+  conversationState: ConversationState;
+  messages: ChatMessage[];
+  userPlanInfo: UserPlanInfo;
+  currentPlanDraft: WorkoutPlan | null;
+  planVersion: number;
+  isLoading: boolean;
+  hasShownHealthDisclaimer: boolean;
+  isInitialized: boolean;
+}
+
+// Context type
+interface AITrainerContextType extends AITrainerState {
+  // Message management
+  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
+  clearMessages: () => void;
+  
+  // State management
+  setConversationState: (state: ConversationState) => void;
+  updateUserPlanInfo: (updates: Partial<UserPlanInfo>) => void;
+  setPlanDraft: (plan: WorkoutPlan | null) => void;
+  clearPlanDraft: () => void;
+  incrementPlanVersion: () => void;
+  setIsLoading: (loading: boolean) => void;
+  dismissHealthDisclaimer: () => void;
+  
+  // Async operations (lazy loaded)
+  saveConversation: () => Promise<void>;
+  loadConversation: () => Promise<void>;
+  savePlan: (plan: WorkoutPlan) => Promise<boolean>;
+  
+  // Reset functions
+  resetConversation: () => void;
+  clearChat: () => void;
+  restartAI: () => void;
+  
+  // Initialization
+  initializeAI: () => Promise<void>;
+}
+
+// Default context - completely safe, no async operations
+const AITrainerContext = createContext<AITrainerContextType>({
+  // Default state
+  conversationState: 'IDLE',
+  messages: [],
+  userPlanInfo: {},
+  currentPlanDraft: null,
+  planVersion: 0,
+  isLoading: false,
+  hasShownHealthDisclaimer: false,
+  isInitialized: false,
+  
+  // Default functions (no-ops)
+  addMessage: () => {},
+  clearMessages: () => {},
+  setConversationState: () => {},
+  updateUserPlanInfo: () => {},
+  setPlanDraft: () => {},
+  clearPlanDraft: () => {},
+  incrementPlanVersion: () => {},
+  setIsLoading: () => {},
+  dismissHealthDisclaimer: () => {},
+  saveConversation: async () => {},
+  loadConversation: async () => {},
+  savePlan: async () => false,
+  resetConversation: () => {},
+  clearChat: () => {},
+  restartAI: () => {},
+  initializeAI: async () => {},
+});
+
+export const useAITrainer = () => {
+  const context = useContext(AITrainerContext);
+  if (!context) {
+    throw new Error('useAITrainer must be used within an AITrainerProvider');
+  }
+  return context;
+};
+
+export const AITrainerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [state, setState] = useState<AITrainerState>({
+    conversationState: 'IDLE',
+    messages: [],
+    userPlanInfo: {},
+    currentPlanDraft: null,
+    planVersion: 0,
+    isLoading: false,
+    hasShownHealthDisclaimer: false,
+    isInitialized: false,
+  });
+
+  // Generate unique message ID
+  const generateMessageId = () => {
+    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  };
+
+  // Message management
+  const addMessage = (message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
+    const newMessage: ChatMessage = {
+      ...message,
+      id: generateMessageId(),
+      timestamp: new Date(),
+    };
+    
+    setState(prev => ({
+      ...prev,
+      messages: [...prev.messages, newMessage],
+    }));
+  };
+
+  const clearMessages = () => {
+    setState(prev => ({ ...prev, messages: [] }));
+  };
+
+  // State management
+  const setConversationState = (conversationState: ConversationState) => {
+    setState(prev => ({ ...prev, conversationState }));
+  };
+
+  const updateUserPlanInfo = (updates: Partial<UserPlanInfo>) => {
+    setState(prev => ({
+      ...prev,
+      userPlanInfo: { ...prev.userPlanInfo, ...updates },
+    }));
+  };
+
+  const setPlanDraft = (currentPlanDraft: WorkoutPlan | null) => {
+    setState(prev => ({ ...prev, currentPlanDraft }));
+  };
+
+  const clearPlanDraft = () => {
+    setState(prev => ({ ...prev, currentPlanDraft: null }));
+  };
+
+  const incrementPlanVersion = () => {
+    setState(prev => ({ ...prev, planVersion: prev.planVersion + 1 }));
+  };
+
+  const setIsLoading = (isLoading: boolean) => {
+    setState(prev => ({ ...prev, isLoading }));
+  };
+
+  const dismissHealthDisclaimer = () => {
+    setState(prev => ({ ...prev, hasShownHealthDisclaimer: true }));
+  };
+
+  // Async operations (lazy loaded - only run when needed)
+  const initializeAI = async () => {
+    try {
+      console.log('AITrainer: Initializing AI (safe mode)');
+      setState(prev => ({ ...prev, isInitialized: true }));
+      
+      // Could add conversation loading here in the future
+      // await loadConversation();
+    } catch (error) {
+      console.error('Error initializing AI:', error);
+      setState(prev => ({ ...prev, isInitialized: true })); // Still mark as initialized
+    }
+  };
+
+  const saveConversation = async () => {
+    try {
+      console.log('AITrainer: Save conversation requested (not implemented yet)');
+      // TODO: Implement database saving when needed
+    } catch (error) {
+      console.error('Error saving conversation:', error);
+    }
+  };
+
+  const loadConversation = async () => {
+    try {
+      console.log('AITrainer: Load conversation requested (not implemented yet)');
+      // TODO: Implement database loading when needed
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+    }
+  };
+
+  const savePlan = async (plan: WorkoutPlan): Promise<boolean> => {
+    try {
+      console.log('AITrainer: Save plan requested (not implemented yet)');
+      // TODO: Implement database saving when needed
+      return false;
+    } catch (error) {
+      console.error('Error saving plan:', error);
+      return false;
+    }
+  };
+
+  // Reset functions
+  const resetConversation = () => {
+    setState({
+      conversationState: 'IDLE',
+      messages: [],
+      userPlanInfo: {},
+      currentPlanDraft: null,
+      planVersion: 0,
+      isLoading: false,
+      hasShownHealthDisclaimer: true, // Keep disclaimer dismissed
+      isInitialized: state.isInitialized, // Keep initialization status
+    });
+  };
+
+  const clearChat = () => {
+    setState(prev => ({
+      ...prev,
+      messages: [],
+      conversationState: 'IDLE',
+      isLoading: false,
+    }));
+  };
+
+  const restartAI = () => {
+    setState({
+      conversationState: 'IDLE',
+      messages: [],
+      userPlanInfo: {},
+      currentPlanDraft: null,
+      planVersion: 0,
+      isLoading: false,
+      hasShownHealthDisclaimer: false, // Show disclaimer again
+      isInitialized: state.isInitialized, // Keep initialization status
+    });
+  };
+
+  const contextValue: AITrainerContextType = {
+    ...state,
+    addMessage,
+    clearMessages,
+    setConversationState,
+    updateUserPlanInfo,
+    setPlanDraft,
+    clearPlanDraft,
+    incrementPlanVersion,
+    setIsLoading,
+    dismissHealthDisclaimer,
+    saveConversation,
+    loadConversation,
+    savePlan,
+    resetConversation,
+    clearChat,
+    restartAI,
+    initializeAI,
+  };
+
+  return (
+    <AITrainerContext.Provider value={contextValue}>
+      {children}
+    </AITrainerContext.Provider>
+  );
+};
+
+export default AITrainerContext;
