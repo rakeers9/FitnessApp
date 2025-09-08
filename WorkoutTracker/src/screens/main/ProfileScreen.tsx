@@ -11,6 +11,7 @@ import {
   Image,
   Alert,
   Dimensions,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -43,6 +44,13 @@ interface WorkoutSession {
   workout_name: string;
 }
 
+// Type for scheduled workouts (pending workouts)
+interface ScheduledWorkout {
+  id: string;
+  name: string;
+  scheduled_days: string[];
+}
+
 // Types for analytics data
 interface WeeklyAnalytics {
   week: string;
@@ -60,16 +68,24 @@ interface MuscleGroupAnalytics {
 interface CalendarProps {
   currentMonth: Date;
   workoutSessions: WorkoutSession[];
+  scheduledWorkouts: ScheduledWorkout[];
   onMonthChange: (date: Date) => void;
   navigation: StackNavigationProp<any>;
+  setShowPlannedWorkoutModal: (show: boolean) => void;
+  setSelectedPlannedWorkouts: (workouts: any[]) => void;
+  setSelectedDate: (date: string) => void;
 }
 
 // Custom Calendar Component
 const CalendarComponent: React.FC<CalendarProps> = ({
   currentMonth,
   workoutSessions,
+  scheduledWorkouts,
   onMonthChange,
   navigation,
+  setShowPlannedWorkoutModal,
+  setSelectedPlannedWorkouts,
+  setSelectedDate,
 }) => {
   // Get calendar data for current month
   const getCalendarDays = () => {
@@ -96,10 +112,27 @@ const CalendarComponent: React.FC<CalendarProps> = ({
     return days;
   };
 
-  // Check if a date has workout sessions
-  const hasWorkoutOnDate = (date: Date): boolean => {
+  // Check if a date has completed workout sessions
+  const hasCompletedWorkoutOnDate = (date: Date): boolean => {
     const dateString = date.toISOString().split('T')[0];
     return workoutSessions.some(session => session.date_performed === dateString);
+  };
+
+  // Check if a date has scheduled (pending) workouts
+  const hasScheduledWorkoutOnDate = (date: Date): boolean => {
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+    // Check if any scheduled workout is for this day of the week
+    // and the date is from today onward (not in the past unless it's today)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const checkDate = new Date(date);
+    checkDate.setHours(0, 0, 0, 0);
+    
+    if (checkDate < today) return false; // Don't show scheduled workouts in the past
+    
+    return scheduledWorkouts.some(workout => 
+      workout.scheduled_days?.includes(dayName)
+    );
   };
 
   // Check if date is today
@@ -159,7 +192,8 @@ const CalendarComponent: React.FC<CalendarProps> = ({
       {/* Calendar Grid */}
       <View style={styles.calendarGrid}>
         {calendarDays.map((date, index) => {
-          const hasWorkout = hasWorkoutOnDate(date);
+          const hasCompleted = hasCompletedWorkoutOnDate(date);
+          const hasScheduled = hasScheduledWorkoutOnDate(date);
           const today = isToday(date);
           const currentMonth = isCurrentMonth(date);
 
@@ -167,9 +201,9 @@ const CalendarComponent: React.FC<CalendarProps> = ({
             <TouchableOpacity
               key={index}
               style={styles.calendarDay}
-              onPress={() => {
-                // Navigate to workout logs for this date
-                if (hasWorkout) {
+              onPress={async () => {
+                if (hasCompleted) {
+                  // Navigate to workout logs for completed workouts
                   const sessionsOnDate = workoutSessions.filter(
                     s => s.date_performed === date.toISOString().split('T')[0]
                   );
@@ -178,8 +212,51 @@ const CalendarComponent: React.FC<CalendarProps> = ({
                     dateDisplay: date.toLocaleDateString(),
                     sessions: sessionsOnDate,
                   });
+                } else if (hasScheduled) {
+                  // Show planned workout modal for scheduled workouts
+                  console.log('Clicked on scheduled workout date');
+                  const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+                  console.log('Day name:', dayName);
+                  console.log('All scheduled workouts:', scheduledWorkouts);
+                  
+                  const plannedForDay = scheduledWorkouts.filter(w => 
+                    w.scheduled_days?.includes(dayName)
+                  );
+                  console.log('Planned for this day:', plannedForDay);
+                  
+                  // Load full workout details for these templates
+                  if (plannedForDay.length > 0) {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (user) {
+                      console.log('Loading full workout details for IDs:', plannedForDay.map(w => w.id));
+                      const { data: fullWorkouts, error } = await supabase
+                        .from('workout_templates')
+                        .select('*')
+                        .in('id', plannedForDay.map(w => w.id))
+                        .eq('user_id', user.id);
+                      
+                      console.log('Full workouts loaded:', fullWorkouts);
+                      console.log('Error if any:', error);
+                      
+                      if (fullWorkouts && !error) {
+                        setSelectedPlannedWorkouts(fullWorkouts);
+                        setSelectedDate(date.toLocaleDateString('en-US', { 
+                          weekday: 'long', 
+                          month: 'long', 
+                          day: 'numeric', 
+                          year: 'numeric' 
+                        }));
+                        setShowPlannedWorkoutModal(true);
+                        console.log('Modal should be showing now');
+                      } else {
+                        console.log('No workouts loaded or error occurred');
+                      }
+                    }
+                  } else {
+                    console.log('No workouts scheduled for this day');
+                  }
                 } else {
-                  // No workouts on this date, go to logs screen anyway
+                  // No workouts on this date, go to logs screen
                   navigation.navigate('WorkoutLogs', {
                     date: date.toISOString().split('T')[0],
                     dateDisplay: date.toLocaleDateString(),
@@ -191,16 +268,18 @@ const CalendarComponent: React.FC<CalendarProps> = ({
               <View
                 style={[
                   styles.dateContainer,
-                  hasWorkout && styles.workoutDate,
-                  today && !hasWorkout && styles.todayDate,
+                  hasCompleted && styles.completedWorkoutDate,
+                  hasScheduled && !hasCompleted && styles.scheduledWorkoutDate,
+                  today && !hasCompleted && !hasScheduled && styles.todayDate,
                 ]}
               >
                 <Text
                   style={[
                     styles.dateText,
                     !currentMonth && styles.otherMonthDate,
-                    hasWorkout && styles.workoutDateText,
-                    today && !hasWorkout && styles.todayDateText,
+                    hasCompleted && styles.completedWorkoutDateText,
+                    hasScheduled && !hasCompleted && styles.scheduledWorkoutDateText,
+                    today && !hasCompleted && !hasScheduled && styles.todayDateText,
                   ]}
                 >
                   {date.getDate()}
@@ -215,7 +294,11 @@ const CalendarComponent: React.FC<CalendarProps> = ({
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: '#17D4D4' }]} />
-          <Text style={styles.legendText}>Workout completed</Text>
+          <Text style={styles.legendText}>Completed</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, styles.scheduledLegendDot]} />
+          <Text style={styles.legendText}>Planned</Text>
         </View>
       </View>
     </View>
@@ -340,17 +423,24 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   
   // State for calendar data
   const [workoutSessions, setWorkoutSessions] = useState<WorkoutSession[]>([]);
+  const [scheduledWorkouts, setScheduledWorkouts] = useState<ScheduledWorkout[]>([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   
   // State for analytics
   const [weeklyAnalytics, setWeeklyAnalytics] = useState<WeeklyAnalytics[]>([]);
   const [muscleAnalytics, setMuscleAnalytics] = useState<MuscleGroupAnalytics[]>([]);
   
+  // State for planned workout modal
+  const [showPlannedWorkoutModal, setShowPlannedWorkoutModal] = useState(false);
+  const [selectedPlannedWorkouts, setSelectedPlannedWorkouts] = useState<any[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  
   // Load data when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
       loadProfileData();
       loadWorkoutSessions();
+      loadScheduledWorkouts();
       loadAnalyticsData();
     }, [])
   );
@@ -420,6 +510,35 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error in loadWorkoutSessions:', error);
+    }
+  };
+
+  // Load scheduled workouts (from workout templates with scheduled days)
+  const loadScheduledWorkouts = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('workout_templates')
+        .select('id, name, scheduled_days')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .not('scheduled_days', 'is', null);
+
+      if (error) {
+        console.error('Error loading scheduled workouts:', error);
+        return;
+      }
+
+      if (data) {
+        // Filter out workouts with empty scheduled_days arrays
+        const scheduledData = data.filter(w => w.scheduled_days && w.scheduled_days.length > 0);
+        setScheduledWorkouts(scheduledData);
+        console.log(`Loaded ${scheduledData.length} scheduled workouts`);
+      }
+    } catch (error) {
+      console.error('Error in loadScheduledWorkouts:', error);
     }
   };
 
@@ -686,8 +805,12 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           <CalendarComponent
             currentMonth={currentMonth}
             workoutSessions={workoutSessions}
+            scheduledWorkouts={scheduledWorkouts}
             onMonthChange={setCurrentMonth}
             navigation={navigation}
+            setShowPlannedWorkoutModal={setShowPlannedWorkoutModal}
+            setSelectedPlannedWorkouts={setSelectedPlannedWorkouts}
+            setSelectedDate={setSelectedDate}
           />
         </View>
 
@@ -702,6 +825,52 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         {/* Bottom spacing for tab bar */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* Planned Workout Modal */}
+      <Modal
+        visible={showPlannedWorkoutModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowPlannedWorkoutModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowPlannedWorkoutModal(false)}>
+              <Ionicons name="close" size={24} color="#000000" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Planned Workouts</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            <Text style={styles.modalDateText}>{selectedDate}</Text>
+            
+            {selectedPlannedWorkouts.map((workout, index) => (
+              <View key={index} style={styles.plannedWorkoutCard}>
+                <View style={styles.plannedWorkoutHeader}>
+                  <Text style={styles.plannedWorkoutTitle}>{workout.name}</Text>
+                  <View style={styles.futureBadge}>
+                    <Text style={styles.futureBadgeText}>Upcoming</Text>
+                  </View>
+                </View>
+                
+                {workout.exercises && workout.exercises.map((exercise: any, exIndex: number) => (
+                  <View key={exIndex} style={styles.plannedExercise}>
+                    <Text style={styles.plannedExerciseName}>{exercise.name}</Text>
+                    <Text style={styles.plannedExerciseDetails}>
+                      {exercise.sets_count} sets × {exercise.reps_count} reps
+                    </Text>
+                  </View>
+                ))}
+                
+                <Text style={styles.plannedWorkoutNote}>
+                  This workout is scheduled for a future date. Start it from the Workouts tab when ready.
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -825,8 +994,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  workoutDate: {
+  completedWorkoutDate: {
     backgroundColor: '#17D4D4',
+  },
+  scheduledWorkoutDate: {
+    borderWidth: 2,
+    borderColor: '#17D4D4',
   },
   todayDate: {
     borderWidth: 2,
@@ -840,8 +1013,12 @@ const styles = StyleSheet.create({
   otherMonthDate: {
     color: '#CCCCCC',
   },
-  workoutDateText: {
+  completedWorkoutDateText: {
     color: '#FFFFFF',
+    fontFamily: 'Poppins-SemiBold',
+  },
+  scheduledWorkoutDateText: {
+    color: '#17D4D4',
     fontFamily: 'Poppins-SemiBold',
   },
   todayDateText: {
@@ -863,6 +1040,11 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     marginRight: 8,
+  },
+  scheduledLegendDot: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#17D4D4',
   },
   legendText: {
     fontSize: 12,
@@ -1036,6 +1218,97 @@ const styles = StyleSheet.create({
   
   bottomSpacing: {
     height: 100, // Space for tab bar
+  },
+  
+  // Planned Workout Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontFamily: 'Poppins-ExtraBold',
+    color: '#000000',
+  },
+  modalContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  modalDateText: {
+    fontSize: 16,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#6E6E6E',
+    marginBottom: 20,
+  },
+  plannedWorkoutCard: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: '#17D4D4',
+    borderStyle: 'dashed',
+  },
+  plannedWorkoutHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  plannedWorkoutTitle: {
+    fontSize: 18,
+    fontFamily: 'Poppins-ExtraBold',
+    color: '#000000',
+    flex: 1,
+    marginRight: 8,
+  },
+  futureBadge: {
+    backgroundColor: '#E8F9F9',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  futureBadgeText: {
+    fontSize: 12,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#17D4D4',
+  },
+  plannedExercise: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#17D4D4',
+  },
+  plannedExerciseName: {
+    fontSize: 15,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#000000',
+    marginBottom: 4,
+  },
+  plannedExerciseDetails: {
+    fontSize: 13,
+    fontFamily: 'Poppins-Regular',
+    color: '#6E6E6E',
+  },
+  plannedWorkoutNote: {
+    fontSize: 13,
+    fontFamily: 'Poppins-Regular',
+    color: '#888888',
+    fontStyle: 'italic',
+    marginTop: 12,
+    textAlign: 'center',
   },
 });
 
