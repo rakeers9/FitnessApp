@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Dimensions,
-  Image,
   ActivityIndicator,
   Alert,
   ScrollView,
@@ -18,6 +17,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
+import Logo from '../../components/Logo';
+import { BrandColors } from '../../constants/theme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -181,10 +182,9 @@ const RegisterScreen = () => {
           {/* Logo and Text Section */}
           <View style={styles.topSection}>
             <View style={styles.logoSection}>
-              <Image 
-                source={require('../../../assets/fl-logo-colored.png')} 
-                style={styles.logo}
-                resizeMode="contain"
+              <Logo
+                width={120}
+                color={BrandColors.terracotta500}
               />
             </View>
 
@@ -315,10 +315,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 124,
     marginBottom: 24,
-  },
-  logo: {
-    width: 160,
-    height: 120,
   },
   textSection: {
     alignItems: 'center',

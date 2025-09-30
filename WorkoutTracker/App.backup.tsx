@@ -1,0 +1,209 @@
+// App.tsx
+import 'react-native-gesture-handler';
+
+import React, { useEffect, useState } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { supabase } from './src/services/supabase';
+import { Session } from '@supabase/supabase-js';
+import { WorkoutSessionProvider } from './src/context/WorkoutSessionContext';
+// Temporarily disabled again - still causing freezing
+// import { AITrainerProvider } from './src/context/AITrainerContextSafe';
+import { GluestackUIProvider } from '@gluestack-ui/themed';
+import { config } from './src/config/gluestack-ui.config';
+import ErrorBoundary from './src/components/ErrorBoundary';
+
+// Font loading - combining Google Fonts with custom font
+import { useFonts } from 'expo-font';
+import {
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold
+} from '@expo-google-fonts/poppins';
+import {
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_700Bold,
+} from '@expo-google-fonts/dm-sans';
+
+// Import screens
+import SplashScreen from './src/screens/onboarding/SplashScreen';
+import WelcomeScreen from './src/screens/onboarding/WelcomeScreen';
+import GetStartedScreen from './src/screens/onboarding/GetStartedScreen';
+import AuthStack from './src/screens/auth/AuthStack';
+import PostAuthSetupScreen from './src/screens/onboarding/PostAuthSetupScreen';
+import WorkoutStack from './src/navigation/WorkoutStack';
+
+const Stack = createStackNavigator();
+
+export default function App() {
+  // Load both Google Fonts and custom fonts
+  const [fontsLoaded] = useFonts({
+    // Google Fonts from @expo-google-fonts/poppins
+    'Poppins-Regular': Poppins_400Regular,
+    'Poppins-Medium': Poppins_500Medium,
+    'Poppins-SemiBold': Poppins_600SemiBold,
+    'Poppins-Bold': Poppins_700Bold,
+
+    // DM Sans fonts for new onboarding screens
+    'DMSans-Regular': DMSans_400Regular,
+    'DMSans-Medium': DMSans_500Medium,
+    'DMSans-Bold': DMSans_700Bold,
+
+    // Custom font from your assets folder
+    'Poppins-ExtraBold': require('./assets/fonts/Poppins-ExtraBold.ttf'),
+    'Poppins-Light': require('./assets/fonts/Poppins-Light.ttf'),
+  });
+
+  const [session, setSession] = useState<Session | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
+  const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
+
+  // Check if user has completed setup
+  const checkSetupStatus = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('has_completed_setup')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error checking setup status:', error);
+        return false;
+      }
+
+      return data?.has_completed_setup || false;
+    } catch (error) {
+      console.error('Error in checkSetupStatus:', error);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
+
+        if (session?.user) {
+          // Check setup status BEFORE setting session to avoid flash
+          const setupComplete = await checkSetupStatus(session.user.id);
+          if (mounted) {
+            setHasCompletedSetup(setupComplete);
+            setSession(session);
+          }
+        } else {
+          if (mounted) {
+            setSession(session);
+            setHasCompletedSetup(false);
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing auth:', error);
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+          setTimeout(() => {
+            if (mounted) setShowSplash(false);
+          }, 2000);
+        }
+      }
+    };
+
+    initializeAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
+      if (session?.user) {
+        // For login events, check setup status first to prevent flash
+        if (event === 'SIGNED_IN') {
+          const setupComplete = await checkSetupStatus(session.user.id);
+          if (mounted) {
+            setHasCompletedSetup(setupComplete);
+            setSession(session);
+          }
+        } else {
+          // For other events, update normally
+          setSession(session);
+          const setupComplete = await checkSetupStatus(session.user.id);
+          if (mounted) {
+            setHasCompletedSetup(setupComplete);
+          }
+        }
+      } else {
+        if (mounted) {
+          setSession(session);
+          setHasCompletedSetup(false);
+        }
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Show splash screen if fonts aren't loaded OR if we're still loading
+  if (!fontsLoaded || showSplash || isLoading) {
+    return (
+      <SafeAreaProvider>
+        <SplashScreen isLoading={isLoading} />
+      </SafeAreaProvider>
+    );
+  }
+
+  return (
+    <ErrorBoundary>
+      <GluestackUIProvider config={config}>
+        <SafeAreaProvider>
+          <WorkoutSessionProvider>
+            {/* <AITrainerProvider> */}
+              <NavigationContainer>
+          <Stack.Navigator
+            screenOptions={{
+              headerShown: false,
+              cardStyle: { backgroundColor: '#FFFFFF' },
+              animation: 'none',
+              gestureEnabled: false,
+            }}
+          >
+            {!session ? (
+              // Not logged in flow
+              <>
+                <Stack.Screen name="Welcome" component={WelcomeScreen} />
+                <Stack.Screen name="GetStarted" component={GetStartedScreen} />
+                <Stack.Screen name="Auth" component={AuthStack} />
+              </>
+            ) : !hasCompletedSetup ? (
+              // Logged in but needs to complete setup
+              <Stack.Screen
+                name="PostAuthSetup"
+                component={PostAuthSetupScreen}
+                initialParams={{
+                  onSetupComplete: () => setHasCompletedSetup(true)
+                }}
+              />
+            ) : (
+              // Ready for main app
+              <Stack.Screen name="Main" component={WorkoutStack} />
+            )}
+          </Stack.Navigator>
+          </NavigationContainer>
+          {/* </AITrainerProvider> */}
+        </WorkoutSessionProvider>
+      </SafeAreaProvider>
+    </GluestackUIProvider>
+    </ErrorBoundary>
+  );
+
+}

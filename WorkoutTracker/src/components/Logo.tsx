@@ -1,0 +1,47 @@
+import React from 'react';
+import Svg, { Path } from 'react-native-svg';
+import { ViewStyle } from 'react-native';
+
+interface LogoProps {
+  width?: number;
+  height?: number;
+  color?: string;
+  style?: ViewStyle;
+}
+
+const Logo: React.FC<LogoProps> = ({
+  width = 150,
+  height = 108,
+  color = 'white',
+  style
+}) => {
+  const aspectRatio = 150 / 108;
+  const actualHeight = width / aspectRatio;
+
+  return (
+    <Svg
+      width={width}
+      height={actualHeight}
+      viewBox="0 0 150 108"
+      fill="none"
+      style={style}
+    >
+      <Path
+        d="M113.078 17.2798H91.0626C88.8519 17.2798 87.0598 19.2139 87.0598 21.5998V86.3998C87.0598 88.7857 88.8519 90.7198 91.0626 90.7198H113.078C115.289 90.7198 117.081 88.7857 117.081 86.3998V21.5998C117.081 19.2139 115.289 17.2798 113.078 17.2798Z"
+        fill={color}
+      />
+      <Path
+        d="M145.1 36.7197H129.089C126.878 36.7197 125.086 38.6539 125.086 41.0397V66.9597C125.086 69.3456 126.878 71.2797 129.089 71.2797H145.1C147.311 71.2797 149.103 69.3456 149.103 66.9597V41.0397C149.103 38.6539 147.311 36.7197 145.1 36.7197Z"
+        fill={color}
+      />
+      <Path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M75.886 4.32C75.886 1.9332 74.0948 0 71.8832 0H39.861C37.6515 0 35.8582 1.9332 35.8582 4.32V32.4C35.8582 34.7868 34.067 36.72 31.8554 36.72H20.0792C18.6903 36.72 17.4014 37.4954 16.6729 38.7699L0.603738 66.8499C-1.04341 69.727 0.873904 73.44 4.00808 73.44H31.8554C34.067 73.44 35.8582 75.3732 35.8582 77.76V103.68C35.8582 106.067 37.6515 108 39.861 108H71.8832C74.0948 108 75.886 106.067 75.886 103.68V4.32Z"
+        fill={color}
+      />
+    </Svg>
+  );
+};
+
+export default Logo;

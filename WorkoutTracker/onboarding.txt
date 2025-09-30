@@ -1,0 +1,94 @@
+🔹 Final Onboarding Flow (Updated)
+1. App Launch & Intro
+
+Splash screen (logo).
+
+Welcome screen → “Get Started” / “Already have an account?”.
+
+2. AI Persona Selection
+
+User picks persona (Calm, Concise, Gentle, Motivational, etc.).
+
+Dynamic changes: avatar + accent colors update globally.
+
+3. Conversational Setup
+
+Chat-style with AI coach.
+
+Ask for name/nickname → confirmation.
+
+Ask for age → confirmation.
+
+4. Context Questions (New Order)
+
+Target weight (slider or numeric).
+
+Main focus (Build Muscle, Lose Fat, Feel Healthier, Sports Performance).
+
+Training inspiration (Appearance, Health, Confidence, Performance).
+
+Biggest challenge (Motivation, Time, Injuries, Other).
+
+Experience level (Beginner, Intermediate, Advanced, Returning).
+
+Preferred training style (Bodyweight, Gym, Both).
+
+Injuries (None, select common injuries, or custom input).
+
+5. Data & Privacy
+
+Privacy consent screen (mandatory + optional checkboxes).
+
+Apple Health sync screen (connect/skip).
+
+6. Training Logistics
+
+Workout frequency (days per week — Mon–Sun checkboxes).
+
+Workout duration (30 min, 45 min, 60+ min).
+
+Injuries (expanded check/confirmation).
+
+7. Referral & Share
+
+Referral Code Screen – Input field for code (optional).
+
+Share Screen – “Share with 5 people to get +2 weeks free trial.”
+
+Includes share buttons (native share sheet / links).
+
+Skippable.
+
+8. Plan Generation
+
+AI persona coach presents personalized plan:
+
+Goal summary, target weight, timeline chart.
+
+Profile recap (age, gender, experience, injuries).
+
+Weekly split (days per week, push/pull/legs or gym/bodyweight).
+
+Daily exercise breakdown (sets, reps, rest).
+
+Persona avatar + coaching tone in explanation.
+
+CTA: “Get Started” → transition.
+
+9. Signup / Account Creation
+
+Final step before unlocking the full app.
+
+Options:
+
+Sign up with Apple
+
+Sign up with Google
+
+Sign up with Email
+
+Flow ensures user has seen their value-packed plan first, making signup feel worthwhile.
+
+🔹 Flow Recap (High-Level)
+
+Intro → Persona → Name & Age → Context Qs → Privacy/Health → Training Logistics → Referral → Share → Plan → Signup

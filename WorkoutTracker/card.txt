@@ -1,0 +1,485 @@
+Absolutely—here’s a pixel-level, generator-ready spec for the **“Calm data driven” persona card**, covering both **Unselected** and **Selected** looks exactly like in your side-by-side screenshots and the color tokens you showed (`base/card`, `base/border`, `base/foreground`, `base/muted-foreground`, green/blue linear-gradient tokens, and the black 60% stop).
+
+All numbers are for a 390×844 viewport (iPhone 13 baseline). Use Poppins everywhere.
+
+---
+
+# Persona Card — “Calm data driven” (UNSELECTED)
+
+## Background color and hex
+
+* **Card surface token:** `base/card`
+
+  * **Hex fallback:** `#0A0A0A` (rich dark gray)
+* **Page/background behind card:** `#000000` (screen background).
+
+## Layout description
+
+* **Card outer frame (in the 2×2 grid):**
+
+  * **Width:** **163 px**
+  * **Height:** **220 px**
+  * **Corner radius:** **20 px** (same on all corners; anti-aliased)
+* **Internal layout:** vertical stack; `align-items: center` for the orb region; bottom text block is left-aligned.
+* **Internal padding:** **16 px** on all sides (min 16 even when the card grows).
+* **Vertical rhythm:** 8-pt grid.
+
+**Stack order (top → bottom inside the card):**
+
+1. “Atmosphere” layer (subtle **radial darkening**; see Visual Effects)
+2. **Orb** (blue/green spherical gradient) — centered horizontally
+3. Text block (Title then Description), both left aligned inside the padded area
+
+## Logo or icon
+
+* None; the **orb** is the only graphical emblem for the persona.
+
+## Text elements
+
+* **Title:** `Calm data driven`
+
+  * Font: **Poppins Medium (500)**
+  * Size / line-height: **16 / 22**
+  * Color token: `base/foreground` → **#FFFFFF**
+  * Alignment: **left**
+  * Position: **16 px** below the orb’s bounding circle; left inset = **16 px** from card edge
+* **Description:** `Description` (placeholder)
+
+  * Font: **Poppins Regular (400)**
+  * Size / line-height: **13 / 18**
+  * Color token: `base/muted-foreground` (≈ **#FFFFFFB8**); in your screenshot it reads slightly dimmer, so use **#FFFFFFA3** (64%) for this card to maintain the lower contrast relative to the title
+  * Alignment: **left**
+  * Position: **4 px** below the title; left inset = **16 px**
+
+## Button elements
+
+* None inside the card.
+
+## Gradients, shadows, and visual effects
+
+### 1) Card chrome (unselected)
+
+* **Border token:** `base/border`
+
+  * **Stroke:** **1 px** outside the card’s edge
+  * **Color:** low-alpha white → **rgba(255,255,255,0.08)** (≈ **#FFFFFF14**)
+* **Drop shadow:** `0 1 8 0 rgba(0,0,0,0.30)` (subtle lift over black)
+
+### 2) “Atmosphere” layer (dark vignette inside the card)
+
+* A **very subtle radial darkening** behind the orb to keep edges from blooming on OLED:
+
+  * **Type:** radial
+  * **Center:** **50% 40%**
+  * **Stops:** 0% `rgba(0,0,0,0.00)` → 100% `rgba(0,0,0,0.25)`
+  * **Blend:** multiply (or normal at 25% if multiply isn’t available)
+
+### 3) Orb (blue/green gradient ball)
+
+* **Shape:** circle
+* **Diameter:** **120 px**
+* **Top margin:** **18 px** from card top edge (inside padding)
+* **Layered gradient recipe (matches your gradient tokens):**
+
+  **L1 — Blue body (radial)**
+
+  * Center: **48% 42%**
+  * Stops:
+
+    * 0%: **#3BADE6** @ **88% α**
+    * 55%: **#3BADE6** @ **36% α**
+    * 100%: **transparent**
+  * Blend: normal
+
+  **L2 — Green wash (linear, left→right)**
+
+  * Angle: **90deg**
+  * Stops from your token:
+
+    * 0%: **#01AB7B** @ **85% α**
+    * 100%: **transparent**
+  * Blend: normal
+
+  **L3 — Blue rake highlight (linear, top-left→bottom-right)**
+
+  * Angle: **135deg**
+  * Stops from your token:
+
+    * 0%: **#3BADE6** @ **70% α**
+    * 100%: **transparent**
+  * Blend: **screen** (preferred) or normal if screen isn’t available
+
+  **L4 — Lower perimeter vignette (radial)**
+
+  * Center: **50% 75%**
+  * Stops:
+
+    * 70%: **transparent**
+    * 100%: **#000000** @ **60% α** *(this is your “black 60%” stop)*
+  * Blend: **multiply**
+
+  **L5 — Grain (very subtle, optional)**
+
+  * Film grain noise texture @ **2–3%** opacity, blend **overlay** or **soft-light** to match your screenshot’s fine texture.
+
+> The **unselected** orb is intentionally restrained: alpha values result in a darker, lower-contrast sphere so text below remains the focal point.
+
+## Padding and margin values (baseline)
+
+* Card outer padding: **16**
+* Orb top: **18**
+* Orb → Title: **16**
+* Title → Description: **4**
+* Left/right insets for text: **16**
+
+## Notes on responsiveness
+
+* **Card width ≤ 163**: keep orb **diameter = 120** but clamp as: `orb = clamp(96, 0.31*cardWidth, 120)`.
+* If you collapse to **1 column** (narrow screens or huge text), increase **card height → 236** and keep the same spacings.
+
+## Animation / transitions
+
+* **On appear:** fade+scale `0.96 → 1.00` over **220 ms** (ease-out cubic), start delay staggered by **40 ms** per card.
+* **On press (not yet selected):** card scales to **0.985** for **90 ms**; Android bounded ripple `rgba(255,255,255,0.08)`.
+
+## Styling consistency
+
+* Radius **20 px** for all persona cards; unselected border **1 px** low-alpha; same text sizes across all cards; same orb layering but with persona-specific colors.
+
+---
+
+# Persona Card — “Calm data driven” (SELECTED)
+
+> Visual goal: the card subtly **lifts** from the grid, the **orb brightens** and appears more volumetric, and the **card background** gains a faint blue/green **ambient glow**. Border stays neutral/brightened—not neon.
+
+## Background color and hex
+
+* **Card surface base:** `base/card` (same as unselected; `#0A0A0A`)
+* **Ambient overlay:** *very soft* blue/green veil across the card:
+
+  * **Type:** **linear-gradient** (top-left → bottom-right, **135deg**)
+  * **Stops:**
+
+    * 0%: **#01AB7B** @ **12% α**
+    * 50%: **#3BADE6** @ **10% α**
+    * 100%: **transparent**
+
+## Layout description
+
+* Same frame, radius, and padding as unselected (163×220, r=20, p=16).
+* Z-order adds two overlays (ambient and top vignette) above the base surface but behind the orb.
+
+## Text elements
+
+* **Title:** unchanged (Poppins 500, 16/22, `#FFFFFF`)
+* **Description:** unchanged (Poppins 400, 13/18, **#FFFFFFA3**).
+* Keep positions identical so selection doesn’t shift layout.
+
+## Gradients, shadows, and visual effects
+
+### 1) Card chrome (selected)
+
+* **Border:** brighten rather than recolor; keep neutral to match your screenshot
+
+  * **Stroke:** **1.25 px** (or 2 px if you prefer sharper lift)
+  * **Color:** **rgba(255,255,255,0.16)** (≈ **#FFFFFF29**)
+* **Shadow:** increase depth
+
+  * From `0 1 8 0 rgba(0,0,0,0.30)`
+  * To: `0 4 18 0 rgba(0,0,0,0.35)` + **ambient** soft shadow `0 0 24 0 rgba(59,173,230,0.10)` (subtle cyan bloom)
+
+### 2) Ambient background (inside card, behind orb)
+
+* **Layer A — Blue/Green field**
+
+  * **Linear 135deg:** 0% `#01AB7B` @ 12% → 50% `#3BADE6` @ 10% → 100% transparent
+* **Layer B — Top fade**
+
+  * **Linear 180deg:** 0% transparent → 100% `rgba(0,0,0,0.28)` (keeps corners quiet)
+
+### 3) Orb (brighter, selected)
+
+* **Diameter:** **120 px** (same geometry)
+
+* **Layer adjustments (vs. unselected):**
+
+  **L1 — Blue body (radial)**
+
+  * Center **48% 42%**
+  * **Increase energy**:
+
+    * 0%: **#3BADE6** @ **100% α** (was 88%)
+    * 55%: **#3BADE6** @ **48% α** (was 36%)
+    * 100%: transparent
+  * Blend: normal
+
+  **L2 — Green wash (linear 90deg)**
+
+  * 0%: **#01AB7B** @ **95% α** (was 85%)
+  * 100%: transparent
+  * Blend: normal
+
+  **L3 — Blue rake highlight (linear 135deg)**
+
+  * 0%: **#3BADE6** @ **80% α** (was 70%)
+  * 100%: transparent
+  * Blend: **screen**
+
+  **L4 — Lower perimeter vignette (radial)**
+
+  * Center **50% 75%**
+  * 70%: transparent → 100%: **#000000** @ **45% α** *(slightly lighter than unselected so the sphere doesn’t look crushed while bright)*
+  * Blend: **multiply**
+
+  **L5 — Grain (slightly stronger for tactile feel)**
+
+  * 3–4% opacity, **overlay** blend.
+
+* **Specular cap (optional on selected):**
+
+  * **Radial at 38% 26%**
+  * 0%: `rgba(255,255,255,0.14)` → 28%: `rgba(255,255,255,0.00)`
+  * Blend: **screen**
+  * This matches the “pop” you can see on the right screenshot.
+
+## Button elements
+
+* None inside the card.
+
+## Padding and margin values
+
+* Identical to unselected (p=16; orb top=18; orb→title=16; title→desc=4).
+
+## Notes on responsiveness
+
+* Same rules as unselected; gradients scale with the orb; ambient overlay always fills the card rect with preserved angles (135° and 180°).
+
+## Animation / transition behaviors (selection)
+
+* **Press-down:** card scale **0.985** (90 ms) then back to **1.0**.
+* **Orb brighten:** animate L1/L2/L3 alpha increases over **120–160 ms** (ease-out cubic).
+* **Ambient overlay fade-in:** opacity **0 → 1** over **180 ms**.
+* **Border brighten:** color **#FFFFFF14 → #FFFFFF29** over **120 ms**.
+* **Reduce Motion:** single **150 ms** opacity transition for orb and ambient; no scaling.
+
+## Styling consistency
+
+* Keep border **neutral** on selection (as per your selected screenshot). If you later opt for a brand-colored selection ring, use **#17D4D4** at **2 px** outside the existing stroke (but this is **not** in the provided reference images).
+
+---
+
+## Color palette (this card)
+
+* **Background (screen):** `#000000`
+* **Card surface (`base/card`):** `#0A0A0A` (fallback)
+* **Card border (unselected):** `rgba(255,255,255,0.08)` ≈ `#FFFFFF14`
+* **Card border (selected):** `rgba(255,255,255,0.16)` ≈ `#FFFFFF29`
+* **Title:** `#FFFFFF`
+* **Description:** `#FFFFFFA3` (64% white) or token `base/muted-foreground` (\~72%) if you keep it brighter
+* **Orb core colors (from your tokens):**
+
+  * **Green:** `#01AB7B`
+  * **Blue:** `#3BADE6`
+  * **Black 0% / 60%** stops for fades and vignettes
+* **Ambient field (selected):** mix of `#01AB7B` (12%) and `#3BADE6` (10%) over `#0A0A0A`
+* **Utility gray (optional edge detailing):** `#202020` (can be used for subtle inner strokes if needed)
+
+---
+
+## Component hierarchy (json)
+
+### Unselected
+
+```json
+{
+  "component": "personaCard",
+  "state": "unselected",
+  "id": "calm-data-driven",
+  "frame": { "w": 163, "h": 220, "radius": 20, "padding": 16 },
+  "chrome": {
+    "surfaceToken": "base/card",
+    "border": { "width": 1, "color": "#FFFFFF14" },
+    "shadow": { "x": 0, "y": 1, "blur": 8, "spread": 0, "color": "rgba(0,0,0,0.30)" }
+  },
+  "layers": [
+    {
+      "type": "radialVignette",
+      "center": { "xPct": 50, "yPct": 40 },
+      "stops": [
+        { "at": 0.0, "color": "rgba(0,0,0,0.00)" },
+        { "at": 1.0, "color": "rgba(0,0,0,0.25)" }
+      ],
+      "blend": "multiply"
+    },
+    {
+      "type": "orb",
+      "frame": { "diameter": 120, "marginTop": 18 },
+      "layers": [
+        { "id": "blue-body", "type": "radial", "center": { "xPct": 48, "yPct": 42 },
+          "stops": [ { "at": 0.0, "color": "rgba(59,173,230,0.88)" },
+                     { "at": 0.55, "color": "rgba(59,173,230,0.36)" },
+                     { "at": 1.0, "color": "rgba(0,0,0,0.00)" } ] },
+        { "id": "green-wash", "type": "linear", "angleDeg": 90,
+          "stops": [ { "at": 0.0, "color": "rgba(1,171,123,0.85)" },
+                     { "at": 1.0, "color": "rgba(0,0,0,0.00)" } ] },
+        { "id": "blue-rake", "type": "linear", "angleDeg": 135,
+          "stops": [ { "at": 0.0, "color": "rgba(59,173,230,0.70)" },
+                     { "at": 1.0, "color": "rgba(0,0,0,0.00)" } ],
+          "blend": "screen" },
+        { "id": "lower-vignette", "type": "radial", "center": { "xPct": 50, "yPct": 75 },
+          "stops": [ { "at": 0.70, "color": "rgba(0,0,0,0.00)" },
+                     { "at": 1.00, "color": "rgba(0,0,0,0.60)" } ],
+          "blend": "multiply" },
+        { "id": "grain", "type": "noise", "opacity": 0.03, "blend": "overlay" }
+      ]
+    },
+    {
+      "type": "textBlock",
+      "children": [
+        { "type": "text", "role": "title", "content": "Calm data driven",
+          "font": { "family": "Poppins", "weight": 500, "size": 16, "lineHeight": 22 },
+          "color": "#FFFFFF", "align": "left", "marginTop": 16, "marginLeft": 16, "marginRight": 16 },
+        { "type": "text", "role": "description", "content": "Description",
+          "font": { "family": "Poppins", "weight": 400, "size": 13, "lineHeight": 18 },
+          "color": "#FFFFFFA3", "align": "left", "marginTop": 4, "marginLeft": 16, "marginRight": 16 }
+      ]
+    }
+  ]
+}
+```
+
+### Selected
+
+```json
+{
+  "component": "personaCard",
+  "state": "selected",
+  "id": "calm-data-driven",
+  "frame": { "w": 163, "h": 220, "radius": 20, "padding": 16 },
+  "chrome": {
+    "surfaceToken": "base/card",
+    "border": { "width": 1.25, "color": "#FFFFFF29" },
+    "shadow": [
+      { "x": 0, "y": 4, "blur": 18, "spread": 0, "color": "rgba(0,0,0,0.35)" },
+      { "x": 0, "y": 0, "blur": 24, "spread": 0, "color": "rgba(59,173,230,0.10)" }
+    ]
+  },
+  "layers": [
+    {
+      "type": "ambientOverlay",
+      "background": "linear-gradient(135deg, rgba(1,171,123,0.12) 0%, rgba(59,173,230,0.10) 50%, rgba(0,0,0,0.00) 100%)"
+    },
+    {
+      "type": "topFade",
+      "background": "linear-gradient(180deg, rgba(0,0,0,0.00) 0%, rgba(0,0,0,0.28) 100%)"
+    },
+    {
+      "type": "orb",
+      "frame": { "diameter": 120, "marginTop": 18 },
+      "layers": [
+        { "id": "blue-body", "type": "radial", "center": { "xPct": 48, "yPct": 42 },
+          "stops": [ { "at": 0.0, "color": "rgba(59,173,230,1.00)" },
+                     { "at": 0.55, "color": "rgba(59,173,230,0.48)" },
+                     { "at": 1.0, "color": "rgba(0,0,0,0.00)" } ] },
+        { "id": "green-wash", "type": "linear", "angleDeg": 90,
+          "stops": [ { "at": 0.0, "color": "rgba(1,171,123,0.95)" },
+                     { "at": 1.0, "color": "rgba(0,0,0,0.00)" } ] },
+        { "id": "blue-rake", "type": "linear", "angleDeg": 135,
+          "stops": [ { "at": 0.0, "color": "rgba(59,173,230,0.80)" },
+                     { "at": 1.0, "color": "rgba(0,0,0,0.00)" } ],
+          "blend": "screen" },
+        { "id": "lower-vignette", "type": "radial", "center": { "xPct": 50, "yPct": 75 },
+          "stops": [ { "at": 0.70, "color": "rgba(0,0,0,0.00)" },
+                     { "at": 1.00, "color": "rgba(0,0,0,0.45)" } ],
+          "blend": "multiply" },
+        { "id": "grain", "type": "noise", "opacity": 0.04, "blend": "overlay" },
+        { "id": "specular", "type": "radial", "center": { "xPct": 38, "yPct": 26 },
+          "stops": [ { "at": 0.0, "color": "rgba(255,255,255,0.14)" },
+                     { "at": 0.28, "color": "rgba(255,255,255,0.00)" } ],
+          "blend": "screen" }
+      ]
+    },
+    {
+      "type": "textBlock",
+      "children": [
+        { "type": "text", "role": "title", "content": "Calm data driven",
+          "font": { "family": "Poppins", "weight": 500, "size": 16, "lineHeight": 22 },
+          "color": "#FFFFFF", "align": "left", "marginTop": 16, "marginLeft": 16, "marginRight": 16 },
+        { "type": "text", "role": "description", "content": "Description",
+          "font": { "family": "Poppins", "weight": 400, "size": 13, "lineHeight": 18 },
+          "color": "#FFFFFFA3", "align": "left", "marginTop": 4, "marginLeft": 16, "marginRight": 16 }
+      ]
+    }
+  ],
+  "transitions": {
+    "select": {
+      "orbAlphaBoostMs": 140,
+      "ambientFadeMs": 180,
+      "borderBrightenMs": 120,
+      "cardScaleOnPress": { "to": 0.985, "durationMs": 90 }
+    }
+  }
+}
+```
+
+
+Cards (2×2 grid)
+
+The grid sits inside a content column that is 342 px wide, centered on the screen.
+(That’s the screen width 390 minus 24 px padding on the left and 24 px on the right.)
+
+Left/right margins: The first column’s left edge is 24 px from the screen’s left edge.
+The second column’s right edge is 24 px from the screen’s right edge.
+
+Space between the two columns: 16 px horizontal gap.
+
+Space between the two rows: 16 px vertical gap.
+
+Space above the first row: The grid starts 24 px below the subtitle line (“This determines how you will be coached”).
+
+Space below the second row: The grid ends 24 px above the bottom button.
+
+Card size (so the gaps come out even): Each card is 163 px wide by 220 px tall.
+(163 = (342 − 16 gap) / 2.)
+
+Inside each card:
+
+All-around padding: 16 px from the card border to its content.
+
+Orb to card top: 18 px (measured from the inside edge).
+
+Title below the orb: 16 px.
+
+Description below the title: 4 px.
+
+Put differently: from the left screen edge you get 24 px of space, 163 px card, 16 px gap, 163 px card, then 24 px to the right edge. Top-to-bottom within the grid it’s the same idea: Row 1, then 16 px gap, then Row 2.
+
+Bottom button (“Continue”)
+
+Width: The button is the same width as the content column: 342 px.
+(So it lines up with the cards and header.)
+
+Height: 56 px tall (pill).
+
+Horizontal position: Centered; 24 px from each screen edge (because it’s 342 px wide).
+
+Space above the button: 24 px from the bottom of the grid to the top of the button.
+
+Space below the button: 24 px above the bottom safe area / home indicator.
+(On iPhone 13 that’s 24 px above the safe-area inset, which itself is above the home bar.)
+
+If content is short: The button sits near the bottom with that 24 px cushion.
+If content scrolls: Keep the button pinned (fixed) and maintain the same 24 px bottom inset; the grid scrolls behind it.
+
+One-line rules to remember
+
+Keep 24 px padding on the left and right edges for everything.
+
+Keep 16 px between cards (both directions).
+
+Keep 24 px above/below the grid (to the subtitle above and the button below).
+
+Keep the button 342 × 56 and 24 px above the bottom safe area.
+
+---
+

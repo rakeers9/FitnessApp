@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -29,14 +28,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      "expo-font"
-    ],
     "extra": {
       "eas": {
         "projectId": "ac99e2a6-e3c2-486a-8025-9cd7f0c73b13"
       }
     },
-    "owner": "sreekarg"
+    "owner": "sreekarg",
+    "plugins": [
+      "expo-font"
+    ]
   }
 }

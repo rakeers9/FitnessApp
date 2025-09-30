@@ -38,7 +38,7 @@ interface QuickReply {
   data?: any;
 }
 
-type ConversationState = 'IDLE' | 'PLAN_CONFIRM' | 'PLAN_INFO_GATHER' | 'PLAN_READY';
+type ConversationState = 'IDLE' | 'PLAN_CONFIRM' | 'PLAN_INFO_GATHER' | 'PLAN_READY' | 'PLAN_EDITING' | 'WORKOUT_CREATE' | 'WORKOUT_SCHEDULE' | 'WORKOUT_READY' | 'WORKOUT_EDITING';
 
 interface UserInfo {
   goal?: string;
@@ -83,8 +83,12 @@ interface WorkoutPreview {
     sets: number;
     reps: string;
     rest_seconds: number;
+    muscle_groups?: string[];
+    notes?: string;
   }[];
   estimated_minutes?: number;
+  scheduledDays?: string[];
+  description?: string;
 }
 
 interface ExercisePreview {
@@ -113,6 +117,7 @@ const AITrainerScreenSimple: React.FC<AITrainerScreenSimpleProps> = ({ navigatio
   const [hasShownDisclaimer, setHasShownDisclaimer] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<WorkoutPlan | null>(null);
   const [showPlanModal, setShowPlanModal] = useState(false);
+  const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [existingPlansCount, setExistingPlansCount] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
@@ -302,77 +307,72 @@ Respond with ONLY the intent keyword.`;
             };
             
           case 'CREATE_WORKOUT':
-            // Generate a workout based on user's request using GPT
-            const workoutPrompt = `Create a single workout based on this request: "${userMessage}"
+            return {
+              content: "I'll help you create a custom workout! Please describe what kind of workout you want. Be as specific as possible.\n\nFor example:\n- 'Upper body strength workout focusing on chest and shoulders'\n- '30-minute HIIT workout for fat loss'\n- 'Leg day with squats and deadlifts'\n- 'Full body workout with dumbbells only'",
+              newState: 'WORKOUT_CREATE',
+              replies: [
+                { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
+              ]
+            };
+            
+          case 'CREATE_EXERCISE':
+            // Parse exercise from user message
+            const exercisePrompt = `Extract exercise details from this message: "${userMessage}"
             
 Return a JSON object with this structure:
 {
-  "name": "Workout name",
-  "exercises": [
-    {
-      "name": "Exercise name",
-      "sets": 3,
-      "reps": "10-12",
-      "rest_seconds": 60
-    }
-  ],
-  "estimated_minutes": 45
+  "name": "Exercise name",
+  "muscle_groups": ["Primary muscle", "Secondary muscle"],
+  "description": "Brief description of the exercise"
 }
 
-Keep it practical with 4-6 exercises.`;
+If the message doesn't contain clear exercise details, return null.`;
 
             try {
-              const workoutResponse = await openai.chat.completions.create({
+              const exerciseResponse = await openai.chat.completions.create({
                 model: 'gpt-4o-mini',
-                messages: [{ role: 'user', content: workoutPrompt }],
-                max_tokens: 400,
-                temperature: 0.7,
+                messages: [{ role: 'user', content: exercisePrompt }],
+                max_tokens: 200,
+                temperature: 0.5,
               });
               
-              const workoutData = JSON.parse(workoutResponse.choices[0]?.message?.content || '{}');
-              setWorkoutPreview(workoutData);
+              const exerciseData = JSON.parse(exerciseResponse.choices[0]?.message?.content || 'null');
               
-              // Add preview card to chat
-              const previewMessage: ChatMessage = {
-                id: generateMessageId(),
-                content: 'Workout Preview',
-                sender: 'ai',
-                timestamp: new Date(),
-                type: 'workout_preview',
-                data: workoutData
-              };
-              
-              setMessages(prev => [...prev, previewMessage]);
-              setShowWorkoutPreview(true);
-              
-              return {
-                content: "I've created a workout for you! Check the preview above. Would you like to save this to your workouts?",
-                replies: [
-                  { id: 'save', text: '✅ Save Workout', action: 'SAVE_WORKOUT', data: workoutData },
-                  { id: 'edit', text: '✏️ Make Changes', action: 'EDIT_PREVIEW', data: 'workout' },
-                  { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
-                ]
-              };
+              if (exerciseData && exerciseData.name) {
+                setExercisePreview(exerciseData);
+                
+                // Add preview card to chat
+                const previewMessage: ChatMessage = {
+                  id: generateMessageId(),
+                  content: 'Exercise Preview',
+                  sender: 'ai',
+                  timestamp: new Date(),
+                  type: 'exercise_preview',
+                  data: exerciseData
+                };
+                
+                setMessages(prev => [...prev, previewMessage]);
+                setShowExercisePreview(true);
+                
+                return {
+                  content: "I've prepared this exercise for your library. Would you like to add it?",
+                  replies: [
+                    { id: 'apply', text: '✅ Apply These Changes', action: 'SAVE_EXERCISE', data: exerciseData },
+                    { id: 'edit', text: '✏️ Make Changes', action: 'EDIT_PREVIEW', data: 'exercise' },
+                    { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
+                  ]
+                };
+              }
             } catch (error) {
-              console.error('Error creating workout:', error);
-              return {
-                content: "Let me help you create a workout. What muscle groups would you like to target?",
-                replies: [
-                  { id: 'upper', text: 'Upper Body', action: 'SET_WORKOUT_TYPE', data: 'upper' },
-                  { id: 'lower', text: 'Lower Body', action: 'SET_WORKOUT_TYPE', data: 'lower' },
-                  { id: 'full', text: 'Full Body', action: 'SET_WORKOUT_TYPE', data: 'full' },
-                  { id: 'custom', text: 'Custom', action: 'SET_WORKOUT_TYPE', data: 'custom' }
-                ]
-              };
+              console.error('Error parsing exercise:', error);
             }
             
-          case 'CREATE_EXERCISE':
             return {
-              content: "Let's add a new exercise to your library! What's the name of the exercise and which muscle groups does it target?",
+              content: "Let's add a new exercise to your library! Please tell me the exercise name and which muscle groups it targets. For example: 'Add barbell squats for quads and glutes'",
             };
             
           case 'EDIT_WORKOUT':
-            const workoutsForEdit = await getUserWorkouts();
+            const workoutsForEdit = await fetchUserWorkouts();
             if (workoutsForEdit.length === 0) {
               return {
                 content: "You don't have any workouts yet. Would you like to create one?",
@@ -384,7 +384,7 @@ Keep it practical with 4-6 exercises.`;
             }
             return {
               content: "Which workout would you like to edit?",
-              replies: workoutsForEdit.slice(0, 5).map(w => ({
+              replies: workoutsForEdit.slice(0, 5).map((w: any) => ({
                 id: w.id,
                 text: w.name,
                 action: 'EDIT_WORKOUT',
@@ -393,7 +393,7 @@ Keep it practical with 4-6 exercises.`;
             };
             
           case 'DELETE_WORKOUT':
-            const workoutsForDelete = await getUserWorkouts();
+            const workoutsForDelete = await fetchUserWorkouts();
             if (workoutsForDelete.length === 0) {
               return {
                 content: "You don't have any workouts to delete.",
@@ -401,7 +401,7 @@ Keep it practical with 4-6 exercises.`;
             }
             return {
               content: "⚠️ Which workout would you like to delete? This cannot be undone.",
-              replies: workoutsForDelete.slice(0, 5).map(w => ({
+              replies: workoutsForDelete.slice(0, 5).map((w: any) => ({
                 id: w.id,
                 text: w.name,
                 action: 'DELETE_WORKOUT',
@@ -566,46 +566,140 @@ Keep it practical with 4-6 exercises.`;
     
     // Handle plan confirmation
     if (conversationState === 'PLAN_CONFIRM') {
-      if (message.includes('yes') || message.includes('build') || message.includes('create')) {
+      // Check for affirmative responses
+      if (message.includes('yes') || message.includes('build') || message.includes('create') || 
+          message.includes('sure') || message.includes('ok') || message.includes('start')) {
         return {
-          content: "Perfect! Let's build your personalized plan. I'll need to ask you a few questions to create the best program for you.\n\nFirst, what's your main fitness goal?",
+          content: "Perfect! Let's build your personalized plan. I'll need to ask you a few questions to create the best program for you.\n\nFirst, what's your main fitness goal? You can tell me in your own words or choose from the options.",
           newState: 'PLAN_INFO_GATHER',
           replies: [
             { id: 'muscle', text: 'Build Muscle', action: 'SET_GOAL', data: 'muscle gain' },
             { id: 'strength', text: 'Get Stronger', action: 'SET_GOAL', data: 'strength' },
             { id: 'fat_loss', text: 'Lose Fat', action: 'SET_GOAL', data: 'fat loss' },
-            { id: 'general', text: 'General Fitness', action: 'SET_GOAL', data: 'general fitness' }
+            { id: 'general', text: 'General Fitness', action: 'SET_GOAL', data: 'general fitness' },
+            { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
           ]
         };
-      } else {
+      } else if (message.includes('no') || message.includes('not') || message.includes('cancel')) {
         return {
           content: "No problem! I'm here to help with any fitness questions you have. Feel free to ask about exercises, nutrition, training tips, or anything else fitness-related.",
           newState: 'IDLE'
+        };
+      } else {
+        // They said something else - check if it's fitness related or off-topic
+        const checkInfo = await extractPlanInfoFromMessage(message);
+        
+        if (checkInfo.isOffTopic) {
+          return {
+            content: "Let's focus on fitness! I'm here to help you create an amazing workout plan. Would you like to get started?",
+            replies: [
+              { id: 'yes', text: 'Yes, create a plan', action: 'CONFIRM_PLAN' },
+              { id: 'no', text: 'Not right now', action: 'DECLINE_PLAN' },
+              { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
+            ]
+          };
+        }
+        
+        // If they provided workout info directly, use it and move forward
+        if (checkInfo.goal || checkInfo.experience || checkInfo.daysPerWeek) {
+          // Store the info they provided
+          const updatedInfo = { ...userInfo };
+          if (checkInfo.goal) updatedInfo.goal = checkInfo.goal;
+          if (checkInfo.experience) updatedInfo.experience = checkInfo.experience;
+          if (checkInfo.daysPerWeek) updatedInfo.daysPerWeek = checkInfo.daysPerWeek;
+          if (checkInfo.sessionLength) updatedInfo.sessionLength = checkInfo.sessionLength;
+          if (checkInfo.equipment) updatedInfo.equipment = checkInfo.equipment;
+          
+          setUserInfo(updatedInfo);
+          
+          // Ask for next missing info
+          const missingInfo = [];
+          if (!updatedInfo.goal) missingInfo.push('goal');
+          if (!updatedInfo.experience) missingInfo.push('experience');
+          if (!updatedInfo.daysPerWeek) missingInfo.push('daysPerWeek');
+          if (!updatedInfo.sessionLength) missingInfo.push('sessionLength');
+          if (!updatedInfo.equipment) missingInfo.push('equipment');
+          
+          if (missingInfo.length > 0) {
+            const nextInfo = askForNextInfo(missingInfo[0]);
+            return {
+              content: `Great! I understand you want to ${checkInfo.goal || 'improve your fitness'}. ${nextInfo.content}`,
+              newState: 'PLAN_INFO_GATHER',
+              replies: nextInfo.replies
+            };
+          }
+        }
+        
+        // Default: ask for confirmation again
+        return {
+          content: "I want to make sure I understand - would you like me to create a personalized workout plan for you?",
+          replies: [
+            { id: 'yes', text: 'Yes, create a plan', action: 'CONFIRM_PLAN' },
+            { id: 'no', text: 'Not right now', action: 'DECLINE_PLAN' },
+            { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
+          ]
         };
       }
     }
     
     // Handle info gathering
     if (conversationState === 'PLAN_INFO_GATHER') {
+      // First, try to extract information from the user's free-form message
+      const extractedInfo = await extractPlanInfoFromMessage(userMessage);
+      
+      // Check if the message is off-topic
+      if (extractedInfo.isOffTopic) {
+        return {
+          content: "Let's stay focused on creating your workout plan! We're building something great for your fitness journey. " + 
+                   (extractedInfo.redirectMessage || "Please tell me about your fitness goals or answer the question above."),
+          replies: quickReplies // Keep existing quick replies
+        };
+      }
+      
+      // Apply any extracted information
+      if (extractedInfo.goal) userInfo.goal = extractedInfo.goal;
+      if (extractedInfo.experience) userInfo.experience = extractedInfo.experience;
+      if (extractedInfo.daysPerWeek) userInfo.daysPerWeek = extractedInfo.daysPerWeek;
+      if (extractedInfo.sessionLength) userInfo.sessionLength = extractedInfo.sessionLength;
+      if (extractedInfo.equipment) userInfo.equipment = extractedInfo.equipment;
+      
+      setUserInfo({ ...userInfo });
+      
       const missingInfo = getMissingInfo();
       
       if (missingInfo.length === 0) {
         // All info collected, generate structured plan
-        const plan = generateStructuredPlan();
-        setCurrentPlan(plan);
+        addMessage("Creating your personalized workout plan... This may take a moment.", 'ai');
         
-        // Add plan card to chat after a delay
-        setTimeout(() => {
-          addMessage(`Your ${plan.plan.name}`, 'ai', 'plan_card', plan);
-        }, 1500);
-        
-        // Show modal after plan card is added
-        setTimeout(() => {
-          setShowPlanModal(true);
-        }, 2000);
+        // Generate plan asynchronously
+        setTimeout(async () => {
+          const plan = await generateStructuredPlan();
+          setCurrentPlan(plan);
+          
+          // Add success message
+          addMessage(`🎉 Perfect! I've created your personalized workout plan!\n\nYour plan includes ${plan.workouts.length} different workouts optimized for your ${userInfo.goal} goals. Each workout is designed to fit your ${userInfo.sessionLength}-minute sessions.\n\nWhat would you like to do with this plan?`, 'ai');
+          
+          // Add plan card to chat
+          setTimeout(() => {
+            addMessage(`Your ${plan.plan.name}`, 'ai', 'plan_card', plan);
+            
+            // Set quick replies for plan actions
+            setQuickReplies([
+              { id: 'apply_plan', text: '✅ Apply These Changes', action: 'APPLY_PLAN' },
+              { id: 'view_plan', text: '👁️ View Plan Details', action: 'VIEW_PLAN' },
+              { id: 'edit_plan', text: '✏️ Edit Plan', action: 'EDIT_PLAN' },
+              { id: 'cancel_plan', text: '❌ Cancel', action: 'CANCEL_PLAN' }
+            ]);
+          }, 500);
+          
+          // Show modal after plan card is added
+          setTimeout(() => {
+            setShowPlanModal(true);
+          }, 1000);
+        }, 100);
         
         return {
-          content: `🎉 Perfect! I've created your personalized workout plan!\n\nYour plan includes ${plan.workouts.length} different workouts optimized for your ${userInfo.goal} goals. Each workout is designed to fit your ${userInfo.sessionLength}-minute sessions.\n\nTap the plan card below to view details anytime!`,
+          content: "",
           newState: 'PLAN_READY'
         };
       } else {
@@ -613,8 +707,280 @@ Keep it practical with 4-6 exercises.`;
       }
     }
     
+    // Handle workout creation state - store description and ask for schedule
+    if (conversationState === 'WORKOUT_CREATE') {
+      // Store the workout description for later
+      setWorkoutPreview({ 
+        name: 'Custom Workout',
+        exercises: [],
+        estimated_minutes: 45,
+        description: userMessage 
+      });
+      setConversationState('WORKOUT_SCHEDULE');
+      
+      // Ask about scheduling first
+      return {
+        content: "Perfect! I understand what workout you want. Which days would you like to schedule this workout?\n\nYou can say things like:\n- 'Monday and Wednesday'\n- 'Every Tuesday and Thursday'\n- 'Three times a week'\n- 'Don't schedule it'",
+        newState: 'WORKOUT_SCHEDULE',
+        replies: [
+          { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
+        ]
+      };
+    }
+    
+    // Handle workout scheduling state
+    if (conversationState === 'WORKOUT_SCHEDULE') {
+      // Parse scheduling from user message using AI
+      addMessage("Understanding your schedule preference and creating your workout... This may take a moment.", 'ai');
+      
+      // Use async IIFE to handle await properly
+      (async () => {
+        const scheduleDays = await parseScheduleDays(userMessage);
+        
+        // Now create the workout with both description and schedule
+      
+      const workoutDescription = workoutPreview?.description || userMessage;
+      const scheduleInfo = scheduleDays.length > 0 
+        ? `This workout will be scheduled for ${scheduleDays.join(', ')}.`
+        : '';
+      
+      const workoutPrompt = `Create a single workout based on this request: "${workoutDescription}"
+      ${scheduleInfo}
+      
+Return ONLY a valid JSON object (no markdown, no explanations, no additional text) with this exact structure:
+{
+  "name": "Descriptive workout name",
+  "exercises": [
+    {
+      "name": "Exercise name",
+      "sets": 3,
+      "reps": "10-12",
+      "rest_seconds": 60,
+      "muscle_groups": ["Primary", "Secondary"],
+      "notes": "Form tip or instruction"
+    }
+  ],
+  "estimated_minutes": 45
+}
+
+Requirements:
+- Include 4-6 exercises appropriate for the schedule frequency
+- Make it specific to the user's request
+- Include muscle_groups and notes for each exercise
+- Use realistic sets, reps, and rest times
+- Return ONLY the JSON object, nothing else`;
+
+      setTimeout(() => {
+        (async () => {
+        try {
+          const workoutResponse = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: workoutPrompt }],
+            max_tokens: 800,
+            temperature: 0.7,
+          });
+          
+          const responseContent = workoutResponse.choices[0]?.message?.content || '{}';
+          
+          // Clean the response
+          const cleanedContent = responseContent
+            .replace(/```json\n?/gi, '')
+            .replace(/```\n?/gi, '')
+            .replace(/^[^{]*({)/s, '$1')
+            .replace(/}[^}]*$/s, '}')
+            .trim();
+          
+          let workoutData;
+          try {
+            workoutData = JSON.parse(cleanedContent);
+          } catch (parseError) {
+            console.error('JSON parse error:', parseError);
+            // Fallback workout
+            workoutData = {
+              name: "Custom Workout",
+              exercises: [
+                { name: "Push-ups", sets: 3, reps: "10-15", rest_seconds: 60, muscle_groups: ["Chest", "Triceps"], notes: "Keep core tight" },
+                { name: "Squats", sets: 3, reps: "12-15", rest_seconds: 90, muscle_groups: ["Quads", "Glutes"], notes: "Chest up, knees over toes" },
+                { name: "Rows", sets: 3, reps: "10-12", rest_seconds: 60, muscle_groups: ["Back", "Biceps"], notes: "Pull to lower chest" },
+                { name: "Plank", sets: 3, reps: "30-60s", rest_seconds: 60, muscle_groups: ["Core"], notes: "Keep straight line" }
+              ],
+              estimated_minutes: 45
+            };
+          }
+          
+          // Add schedule to workout data
+          workoutData.scheduledDays = scheduleDays;
+          setWorkoutPreview(workoutData);
+          setConversationState('WORKOUT_READY');
+          
+          // Add workout preview card with plan-like design
+          setTimeout(() => {
+            const previewMessage: ChatMessage = {
+              id: generateMessageId(),
+              content: 'Your Custom Workout',
+              sender: 'ai',
+              timestamp: new Date(),
+              type: 'workout_preview',
+              data: workoutData
+            };
+            
+            setMessages(prev => [...prev, previewMessage]);
+            setShowWorkoutPreview(true);
+            
+            const scheduleText = scheduleDays.length > 0 
+              ? `It will be scheduled for ${scheduleDays.join(', ')}.`
+              : "It won't be scheduled to any specific days.";
+            
+            addMessage(`Perfect! I've created your workout. ${scheduleText}\n\nWhat would you like to do with this workout?`, 'ai');
+            
+            // Set persistent quick replies
+            setQuickReplies([
+              { id: 'apply', text: '✅ Apply These Changes', action: 'APPLY_WORKOUT' },
+              { id: 'view', text: '👁️ View Workout', action: 'VIEW_WORKOUT' },
+              { id: 'edit', text: '✏️ Edit Workout', action: 'EDIT_WORKOUT' },
+              { id: 'cancel', text: '❌ Cancel', action: 'CANCEL_WORKOUT' }
+            ]);
+            
+            // Auto-open workout modal
+            setTimeout(() => {
+              setShowWorkoutModal(true);
+            }, 1000);
+          }, 500);
+        } catch (error) {
+          console.error('Error creating workout:', error);
+          addMessage("I had trouble creating that workout. Let's try again. What kind of workout would you like?", 'ai');
+          setConversationState('IDLE');
+        }
+        })(); // End of inner async IIFE
+      }, 100);
+      })(); // End of outer async IIFE
+      
+      return {
+        content: "",
+        newState: 'WORKOUT_SCHEDULE'
+      };
+    }
+    
+    // Handle workout ready state
+    if (conversationState === 'WORKOUT_READY') {
+      // Check if user wants to edit
+      if (message.includes('edit') || message.includes('change') || message.includes('modify')) {
+        return {
+          content: "Would you like to make changes to this workout?",
+          replies: [
+            { id: 'yes_edit', text: 'Yes, edit it', action: 'CONFIRM_WORKOUT_EDIT' },
+            { id: 'no_edit', text: 'No, go back', action: 'CANCEL_WORKOUT_EDIT' }
+          ]
+        };
+      }
+      
+      // Keep the quick replies visible
+      return {
+        content: "Your workout is ready. You can apply it, view details, edit it, or cancel.",
+        replies: [
+          { id: 'apply', text: '✅ Apply These Changes', action: 'APPLY_WORKOUT' },
+          { id: 'view', text: '👁️ View Workout', action: 'VIEW_WORKOUT' },
+          { id: 'edit', text: '✏️ Edit Workout', action: 'EDIT_WORKOUT' },
+          { id: 'cancel', text: '❌ Cancel', action: 'CANCEL_WORKOUT' }
+        ]
+      };
+    }
+    
+    // Handle workout editing state
+    if (conversationState === 'WORKOUT_EDITING') {
+      addMessage("Applying your changes to the workout... This may take a moment.", 'ai');
+      
+      setTimeout(async () => {
+        const editedWorkout = await editSingleWorkout(userMessage);
+        setWorkoutPreview(editedWorkout);
+        setConversationState('WORKOUT_READY');
+        
+        // Update the preview card
+        setTimeout(() => {
+          setMessages(prev => prev.filter(msg => msg.type !== 'workout_preview'));
+          
+          const previewMessage: ChatMessage = {
+            id: generateMessageId(),
+            content: 'Workout Preview (Updated)',
+            sender: 'ai',
+            timestamp: new Date(),
+            type: 'workout_preview',
+            data: editedWorkout
+          };
+          
+          setMessages(prev => [...prev, previewMessage]);
+          
+          addMessage(`✅ I've updated your workout based on your request!\n\nWhat would you like to do next?`, 'ai');
+          
+          // Set persistent quick replies
+          setQuickReplies([
+            { id: 'apply', text: '✅ Apply These Changes', action: 'APPLY_WORKOUT' },
+            { id: 'view', text: '👁️ View Workout', action: 'VIEW_WORKOUT' },
+            { id: 'edit', text: '✏️ Edit Again', action: 'EDIT_WORKOUT' },
+            { id: 'cancel', text: '❌ Cancel', action: 'CANCEL_WORKOUT' }
+          ]);
+        }, 500);
+      }, 100);
+      
+      return {
+        content: "",
+        newState: 'WORKOUT_EDITING'
+      };
+    }
+    
+    // Handle plan editing state
+    if (conversationState === 'PLAN_EDITING') {
+      // User is providing edit instructions
+      addMessage("Applying your changes to the workout plan... This may take a moment.", 'ai');
+      
+      setTimeout(async () => {
+        const editedPlan = await editWorkoutPlan(userMessage);
+        setCurrentPlan(editedPlan);
+        setConversationState('PLAN_READY');
+        
+        // Add success message
+        addMessage(`✅ I've updated your workout plan based on your request!\n\nThe plan now includes ${editedPlan.workouts.length} workouts with your requested changes.\n\nWhat would you like to do next?`, 'ai');
+        
+        // Update the plan card
+        setTimeout(() => {
+          // Remove old plan card and add new one
+          setMessages(prev => prev.filter(msg => msg.type !== 'plan_card'));
+          addMessage(`Your ${editedPlan.plan.name} (Updated)`, 'ai', 'plan_card', editedPlan);
+          
+          // Set quick replies for plan actions
+          setQuickReplies([
+            { id: 'apply_plan', text: '✅ Apply These Changes', action: 'APPLY_PLAN' },
+            { id: 'view_plan', text: '👁️ View Plan Details', action: 'VIEW_PLAN' },
+            { id: 'edit_plan', text: '✏️ Edit Plan Again', action: 'EDIT_PLAN' },
+            { id: 'cancel_plan', text: '❌ Cancel', action: 'CANCEL_PLAN' }
+          ]);
+        }, 500);
+        
+        // Show modal to review changes
+        setTimeout(() => {
+          setShowPlanModal(true);
+        }, 1000);
+      }, 100);
+      
+      return {
+        content: "",
+        newState: 'PLAN_EDITING'
+      };
+    }
+    
     // Handle plan ready state
     if (conversationState === 'PLAN_READY') {
+      // Check if user wants to edit the plan
+      if (message.includes('edit') || message.includes('change') || message.includes('modify') || message.includes('update')) {
+        return {
+          content: "I can help you modify your workout plan. Would you like to make changes to it?",
+          replies: [
+            { id: 'yes_edit', text: 'Yes, edit the plan', action: 'CONFIRM_EDIT' },
+            { id: 'no_edit', text: 'No, go back', action: 'CANCEL_EDIT' }
+          ]
+        };
+      }
+      
       // Check if it's another plan request
       if (message.includes('plan') || message.includes('workout') || message.includes('program') || message.includes('routine')) {
         // Reset user info and start fresh
@@ -722,52 +1088,56 @@ Keep it practical with 4-6 exercises.`;
   const askForNextInfo = (infoType: string): { content: string; replies: QuickReply[] } => {
     switch (infoType) {
       case 'goal':
-        // This shouldn't happen as goal is asked in the confirm flow, but just in case
         return {
-          content: "What's your main fitness goal?",
+          content: "What's your main fitness goal? You can choose from the options below or tell me in your own words.",
           replies: [
             { id: 'muscle', text: 'Build Muscle', action: 'SET_GOAL', data: 'muscle gain' },
             { id: 'strength', text: 'Get Stronger', action: 'SET_GOAL', data: 'strength' },
             { id: 'fat_loss', text: 'Lose Fat', action: 'SET_GOAL', data: 'fat loss' },
-            { id: 'general', text: 'General Fitness', action: 'SET_GOAL', data: 'general fitness' }
+            { id: 'general', text: 'General Fitness', action: 'SET_GOAL', data: 'general fitness' },
+            { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
           ]
         };
       case 'experience':
         return {
-          content: "What's your fitness experience level?",
+          content: "What's your fitness experience level? Feel free to describe it in detail or use the quick options.",
           replies: [
             { id: 'beginner', text: 'Beginner', action: 'SET_EXPERIENCE', data: 'beginner' },
             { id: 'intermediate', text: 'Intermediate', action: 'SET_EXPERIENCE', data: 'intermediate' },
-            { id: 'advanced', text: 'Advanced', action: 'SET_EXPERIENCE', data: 'advanced' }
+            { id: 'advanced', text: 'Advanced', action: 'SET_EXPERIENCE', data: 'advanced' },
+            { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
           ]
         };
       case 'daysPerWeek':
         return {
-          content: "How many days per week can you work out?",
+          content: "How many days per week can you work out? You can pick an option or tell me your specific schedule.",
           replies: [
             { id: '3days', text: '3 days', action: 'SET_DAYS', data: 3 },
             { id: '4days', text: '4 days', action: 'SET_DAYS', data: 4 },
             { id: '5days', text: '5 days', action: 'SET_DAYS', data: 5 },
-            { id: '6days', text: '6 days', action: 'SET_DAYS', data: 6 }
+            { id: '6days', text: '6 days', action: 'SET_DAYS', data: 6 },
+            { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
           ]
         };
       case 'sessionLength':
         return {
-          content: "How long do you want each workout session to be?",
+          content: "How long do you want each workout session to be? Choose an option or specify your preferred duration.",
           replies: [
             { id: '30min', text: '30 minutes', action: 'SET_DURATION', data: 30 },
             { id: '45min', text: '45 minutes', action: 'SET_DURATION', data: 45 },
             { id: '60min', text: '60 minutes', action: 'SET_DURATION', data: 60 },
-            { id: '90min', text: '90 minutes', action: 'SET_DURATION', data: 90 }
+            { id: '90min', text: '90 minutes', action: 'SET_DURATION', data: 90 },
+            { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
           ]
         };
       case 'equipment':
         return {
-          content: "What equipment do you have access to?",
+          content: "What equipment do you have access to? You can select an option or describe what you have available.",
           replies: [
             { id: 'gym', text: 'Full Gym', action: 'SET_EQUIPMENT', data: ['gym', 'barbell', 'dumbbells', 'machines'] },
             { id: 'home', text: 'Home (Dumbbells)', action: 'SET_EQUIPMENT', data: ['dumbbells', 'bodyweight'] },
-            { id: 'bodyweight', text: 'Bodyweight Only', action: 'SET_EQUIPMENT', data: ['bodyweight'] }
+            { id: 'bodyweight', text: 'Bodyweight Only', action: 'SET_EQUIPMENT', data: ['bodyweight'] },
+            { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
           ]
         };
       default:
@@ -779,8 +1149,221 @@ Keep it practical with 4-6 exercises.`;
     }
   };
 
-  // Generate a structured workout plan
-  const generateStructuredPlan = (): WorkoutPlan => {
+  // Parse schedule days from user message using AI
+  const parseScheduleDays = async (message: string): Promise<string[]> => {
+    const prompt = `Analyze this scheduling request and determine which days of the week to schedule a workout: "${message}"
+    
+Examples:
+- "three times a week" → ["Monday", "Wednesday", "Friday"]
+- "every weekday" → ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+- "Tuesdays and Thursdays" → ["Tuesday", "Thursday"]
+- "every other day" → ["Monday", "Wednesday", "Friday", "Sunday"]
+- "don't schedule" or "no specific days" → []
+- "daily" → ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+- "weekends only" → ["Saturday", "Sunday"]
+
+Return ONLY a JSON array of day names like ["Monday", "Wednesday", "Friday"] or [] for no schedule.
+Be smart about distributing days evenly if a frequency is given (e.g., "4 times a week").`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 100,
+        temperature: 0.3,
+      });
+      
+      const responseContent = response.choices[0]?.message?.content || '[]';
+      const cleanedContent = responseContent
+        .replace(/```json\n?/gi, '')
+        .replace(/```\n?/gi, '')
+        .trim();
+      
+      const days = JSON.parse(cleanedContent);
+      return Array.isArray(days) ? days : [];
+    } catch (error) {
+      console.error('Error parsing schedule:', error);
+      // Fallback to empty schedule if AI fails
+      return [];
+    }
+  };
+  
+  // Edit single workout using AI
+  const editSingleWorkout = async (editRequest: string): Promise<WorkoutPreview> => {
+    if (!workoutPreview) return workoutPreview!;
+    
+    const prompt = `Here is an existing workout in JSON format:
+${JSON.stringify(workoutPreview, null, 2)}
+
+User request: "${editRequest}"
+
+Apply the requested changes to this workout and return the modified version.
+Keep the same JSON structure. Make only the changes requested by the user.
+Return ONLY the valid JSON object (no markdown, no explanations).`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 800,
+        temperature: 0.5,
+      });
+      
+      const workoutContent = response.choices[0]?.message?.content || '';
+      const cleanedContent = workoutContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const editedWorkout = JSON.parse(cleanedContent);
+      
+      return editedWorkout as WorkoutPreview;
+    } catch (error) {
+      console.error('Error editing workout with AI:', error);
+      return workoutPreview;
+    }
+  };
+  
+  // Extract plan information from free-form user message
+  const extractPlanInfoFromMessage = async (message: string): Promise<any> => {
+    const prompt = `Analyze this user message in the context of creating a workout plan: "${message}"
+    
+    Extract any of the following information if present:
+    - goal: fitness goal (muscle gain, strength, fat loss, general fitness, endurance, etc.)
+    - experience: fitness level (beginner, intermediate, advanced)
+    - daysPerWeek: number of workout days (1-7)
+    - sessionLength: workout duration in minutes
+    - equipment: available equipment (gym, dumbbells, barbell, bodyweight, etc.)
+    
+    Also determine:
+    - isOffTopic: true if the message is completely unrelated to fitness/workouts
+    - redirectMessage: if off-topic, provide a friendly redirect message
+    
+    Return ONLY a JSON object like:
+    {
+      "goal": "muscle gain",
+      "experience": null,
+      "daysPerWeek": 4,
+      "sessionLength": null,
+      "equipment": ["gym", "dumbbells"],
+      "isOffTopic": false,
+      "redirectMessage": null
+    }
+    
+    Set values to null if not mentioned. Parse numbers appropriately.`;
+    
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 200,
+        temperature: 0.3,
+      });
+      
+      const content = response.choices[0]?.message?.content || '{}';
+      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      return JSON.parse(cleanedContent);
+    } catch (error) {
+      console.error('Error extracting plan info:', error);
+      return { isOffTopic: false };
+    }
+  };
+  
+  // Edit existing workout plan using AI
+  const editWorkoutPlan = async (editRequest: string): Promise<WorkoutPlan> => {
+    if (!currentPlan) return currentPlan!;
+    
+    const prompt = `Here is an existing workout plan in JSON format:
+${JSON.stringify(currentPlan, null, 2)}
+
+User request: "${editRequest}"
+
+Apply the requested changes to this workout plan and return the modified plan.
+Keep the same JSON structure. Make only the changes requested by the user.
+Return ONLY the valid JSON object (no markdown, no explanations).`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2000,
+        temperature: 0.5,
+      });
+      
+      const planContent = response.choices[0]?.message?.content || '';
+      const cleanedContent = planContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const editedPlan = JSON.parse(cleanedContent);
+      
+      return editedPlan as WorkoutPlan;
+    } catch (error) {
+      console.error('Error editing plan with AI:', error);
+      // Return original plan if edit fails
+      return currentPlan;
+    }
+  };
+  
+  // Generate a structured workout plan using AI
+  const generateStructuredPlan = async (): Promise<WorkoutPlan> => {
+    const { goal, experience, daysPerWeek, sessionLength, equipment } = userInfo;
+    
+    const prompt = `Create a detailed workout plan with the following requirements:
+    - Goal: ${goal}
+    - Experience level: ${experience}
+    - Days per week: ${daysPerWeek}
+    - Session length: ${sessionLength} minutes
+    - Equipment: ${equipment?.join(', ')}
+    
+    Return ONLY a valid JSON object with this exact structure (no markdown, no explanations):
+    {
+      "plan": {
+        "name": "Plan name",
+        "start_date": "${new Date().toISOString()}",
+        "length_weeks": 8,
+        "days_per_week": ${daysPerWeek},
+        "progression_model": "progressive overload",
+        "notes": "Brief plan description"
+      },
+      "workouts": [
+        {
+          "day_of_week": "Monday",
+          "title": "Workout name",
+          "estimated_minutes": ${sessionLength},
+          "exercises": [
+            {
+              "name": "Exercise name",
+              "sets": 3,
+              "reps": "8-12",
+              "rest_seconds": 90,
+              "muscle_groups": ["Primary", "Secondary"],
+              "notes": "Form tip"
+            }
+          ]
+        }
+      ]
+    }
+    
+    Create ${daysPerWeek} different workouts spread across the week. Include 4-6 exercises per workout.
+    Make it specific to the user's goals and equipment. Be creative and varied with exercise selection.`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2000,
+        temperature: 0.7,
+      });
+      
+      const planContent = response.choices[0]?.message?.content || '';
+      // Clean the response to ensure it's valid JSON
+      const cleanedContent = planContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const plan = JSON.parse(cleanedContent);
+      
+      return plan as WorkoutPlan;
+    } catch (error) {
+      console.error('Error generating AI plan:', error);
+      // Fallback to basic plan if AI fails
+      return generateBasicPlan();
+    }
+  };
+  
+  // Fallback basic plan generator (simplified version of old code)
+  const generateBasicPlan = (): WorkoutPlan => {
     const { goal, experience, daysPerWeek, sessionLength, equipment } = userInfo;
     const hasGym = equipment?.includes('gym');
     const startDate = new Date();
@@ -1310,7 +1893,7 @@ Keep it practical with 4-6 exercises.`;
       const endDate = new Date(startDate);
       endDate.setDate(endDate.getDate() + (plan.plan.length_weeks * 7));
 
-      const calendarEntries = [];
+      const calendarEntries: any[] = [];
       const currentDate = new Date(startDate);
 
       // Generate calendar entries for each scheduled workout
@@ -1394,6 +1977,103 @@ Keep it practical with 4-6 exercises.`;
 
   // Handle quick reply - auto-send without filling text box
   const handleQuickReply = async (reply: QuickReply) => {
+    // Handle APPLY_PLAN action
+    if (reply.action === 'APPLY_PLAN') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([]);
+      handleApplyWorkout();
+      return;
+    }
+    
+    // Handle VIEW_PLAN action
+    if (reply.action === 'VIEW_PLAN') {
+      addMessage(reply.text, 'user');
+      // Don't clear quick replies - keep them available
+      setShowPlanModal(true);
+      return;
+    }
+    
+    // Handle EDIT_PLAN action
+    if (reply.action === 'EDIT_PLAN') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([]);
+      setIsLoading(true);
+      
+      setTimeout(() => {
+        addMessage("I can help you modify your workout plan. Would you like to make changes to it?", 'ai');
+        setQuickReplies([
+          { id: 'yes_edit', text: 'Yes, edit the plan', action: 'CONFIRM_EDIT' },
+          { id: 'no_edit', text: 'No, go back', action: 'CANCEL_EDIT' }
+        ]);
+        setIsLoading(false);
+      }, 500);
+      return;
+    }
+    
+    // Handle CONFIRM_EDIT action
+    if (reply.action === 'CONFIRM_EDIT') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([]);
+      setIsLoading(true);
+      
+      setTimeout(() => {
+        addMessage("What changes would you like to make to your workout plan? You can ask me to:\n- Add or remove exercises\n- Change the number of sets/reps\n- Adjust workout days or duration\n- Focus on different muscle groups\n- Make it harder or easier\n\nJust tell me what you'd like to change!", 'ai');
+        setConversationState('PLAN_EDITING');
+        setIsLoading(false);
+      }, 500);
+      return;
+    }
+    
+    // Handle CANCEL_EDIT action
+    if (reply.action === 'CANCEL_EDIT') {
+      addMessage(reply.text, 'user');
+      // Go back to showing plan options
+      setQuickReplies([
+        { id: 'apply_plan', text: '✅ Apply These Changes', action: 'APPLY_PLAN' },
+        { id: 'view_plan', text: '👁️ View Plan Details', action: 'VIEW_PLAN' },
+        { id: 'edit_plan', text: '✏️ Edit Plan', action: 'EDIT_PLAN' },
+        { id: 'cancel_plan', text: '❌ Cancel', action: 'CANCEL_PLAN' }
+      ]);
+      return;
+    }
+    
+    // Handle CANCEL_PLAN action
+    if (reply.action === 'CANCEL_PLAN') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([]);
+      setConversationState('IDLE');
+      setCurrentPlan(null);
+      setShowPlanModal(false);
+      setIsLoading(true);
+      
+      setTimeout(() => {
+        addMessage("No problem! The workout plan has been cancelled. Let me know if you'd like to create a different plan or need any fitness advice.", 'ai');
+        setIsLoading(false);
+      }, 500);
+      return;
+    }
+    
+    // Handle START_OVER action
+    if (reply.action === 'START_OVER') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([]);
+      setConversationState('IDLE');
+      setUserInfo({});
+      setCurrentPlan(null);
+      setIsLoading(true);
+      
+      setTimeout(() => {
+        addMessage("Let's create a new workout plan! What are your fitness goals?", 'ai');
+        setConversationState('PLAN_CONFIRM');
+        setQuickReplies([
+          { id: 'yes', text: "Yes, let's go!", action: 'CONFIRM_PLAN' },
+          { id: 'no', text: 'Not right now', action: 'CANCEL' }
+        ]);
+        setIsLoading(false);
+      }, 500);
+      return;
+    }
+    
     // Handle CANCEL action
     if (reply.action === 'CANCEL') {
       addMessage(reply.text, 'user');
@@ -1447,11 +2127,125 @@ Keep it practical with 4-6 exercises.`;
       addMessage(reply.text, 'user');
       setQuickReplies([]);
       setIsLoading(true);
+      setConversationState('WORKOUT_CREATE');
       
       setTimeout(() => {
-        addMessage("I'll help you create a single workout. What type of workout would you like to create?\n\nYou can say things like:\n- 'Upper body strength workout'\n- '30-minute HIIT session'\n- 'Leg day workout'\n- 'Full body circuit'", 'ai');
+        addMessage("I'll help you create a custom workout! Please describe what kind of workout you want. Be as specific as possible.\n\nFor example:\n- 'Upper body strength workout focusing on chest and shoulders'\n- '30-minute HIIT workout for fat loss'\n- 'Leg day with squats and deadlifts'\n- 'Full body workout with dumbbells only'", 'ai');
+        setQuickReplies([
+          { id: 'cancel', text: '❌ Cancel', action: 'CANCEL' }
+        ]);
         setIsLoading(false);
       }, 500);
+      return;
+    }
+    
+    // Handle SET_SCHEDULE action
+    if (reply.action === 'SET_SCHEDULE') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([]);
+      
+      // Store the schedule
+      if (workoutPreview) {
+        workoutPreview.scheduledDays = reply.data;
+      }
+      
+      setConversationState('WORKOUT_READY');
+      
+      // Add preview card
+      setTimeout(() => {
+        const previewMessage: ChatMessage = {
+          id: generateMessageId(),
+          content: 'Workout Preview',
+          sender: 'ai',
+          timestamp: new Date(),
+          type: 'workout_preview',
+          data: workoutPreview || undefined
+        };
+        
+        setMessages(prev => [...prev, previewMessage]);
+        setShowWorkoutPreview(true);
+        
+        const scheduleText = reply.data.length > 0 
+          ? `It will be scheduled for ${reply.data.join(', ')}.`
+          : "It won't be scheduled to any specific days.";
+        
+        addMessage(`Your workout is ready! ${scheduleText}\n\nWhat would you like to do with this workout?`, 'ai');
+        
+        setQuickReplies([
+          { id: 'apply', text: '✅ Apply These Changes', action: 'APPLY_WORKOUT' },
+          { id: 'view', text: '👁️ View Workout', action: 'VIEW_WORKOUT' },
+          { id: 'edit', text: '✏️ Edit Workout', action: 'EDIT_WORKOUT' },
+          { id: 'cancel', text: '❌ Cancel', action: 'CANCEL_WORKOUT' }
+        ]);
+      }, 500);
+      return;
+    }
+    
+    // Handle APPLY_WORKOUT action
+    if (reply.action === 'APPLY_WORKOUT') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([]);
+      handleApplySingleWorkout();
+      return;
+    }
+    
+    // Handle VIEW_WORKOUT action
+    if (reply.action === 'VIEW_WORKOUT') {
+      addMessage(reply.text, 'user');
+      if (workoutPreview) {
+        setShowWorkoutModal(true);
+      }
+      return;
+    }
+    
+    // Handle EDIT_WORKOUT action
+    if (reply.action === 'EDIT_WORKOUT') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([]);
+      setIsLoading(true);
+      
+      setTimeout(() => {
+        addMessage("What changes would you like to make to this workout? You can ask me to:\n- Add or remove exercises\n- Change sets/reps\n- Adjust rest times\n- Rename the workout", 'ai');
+        setConversationState('WORKOUT_EDITING');
+        setIsLoading(false);
+      }, 500);
+      return;
+    }
+    
+    // Handle CANCEL_WORKOUT action
+    if (reply.action === 'CANCEL_WORKOUT') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([]);
+      setConversationState('IDLE');
+      setWorkoutPreview(null);
+      setShowWorkoutPreview(false);
+      
+      setTimeout(() => {
+        addMessage("No problem! The workout has been cancelled. Let me know if you'd like to create a different workout or need any fitness advice.", 'ai');
+      }, 500);
+      return;
+    }
+    
+    // Handle CONFIRM_WORKOUT_EDIT and CANCEL_WORKOUT_EDIT
+    if (reply.action === 'CONFIRM_WORKOUT_EDIT') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([]);
+      setConversationState('WORKOUT_EDITING');
+      
+      setTimeout(() => {
+        addMessage("What changes would you like to make to this workout?", 'ai');
+      }, 500);
+      return;
+    }
+    
+    if (reply.action === 'CANCEL_WORKOUT_EDIT') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([
+        { id: 'apply', text: '✅ Apply These Changes', action: 'APPLY_WORKOUT' },
+        { id: 'view', text: '👁️ View Workout', action: 'VIEW_WORKOUT' },
+        { id: 'edit', text: '✏️ Edit Workout', action: 'EDIT_WORKOUT' },
+        { id: 'cancel', text: '❌ Cancel', action: 'CANCEL_WORKOUT' }
+      ]);
       return;
     }
     
@@ -1473,7 +2267,7 @@ Keep it practical with 4-6 exercises.`;
       setIsLoading(true);
       
       // Fetch user's workouts
-      const workouts = await getUserWorkouts();
+      const workouts = await fetchUserWorkouts();
       
       if (workouts.length === 0) {
         setTimeout(() => {
@@ -1487,7 +2281,7 @@ Keep it practical with 4-6 exercises.`;
       } else {
         setTimeout(() => {
           addMessage("Which workout would you like to edit?", 'ai');
-          setQuickReplies(workouts.map(w => ({
+          setQuickReplies(workouts.map((w: any) => ({
             id: w.id,
             text: w.name,
             action: 'EDIT_WORKOUT',
@@ -1505,7 +2299,7 @@ Keep it practical with 4-6 exercises.`;
       setIsLoading(true);
       
       // Fetch user's workouts
-      const workouts = await getUserWorkouts();
+      const workouts = await fetchUserWorkouts();
       
       if (workouts.length === 0) {
         setTimeout(() => {
@@ -1515,7 +2309,7 @@ Keep it practical with 4-6 exercises.`;
       } else {
         setTimeout(() => {
           addMessage("Which workout would you like to delete?", 'ai');
-          setQuickReplies(workouts.map(w => ({
+          setQuickReplies(workouts.map((w: any) => ({
             id: w.id,
             text: w.name,
             action: 'DELETE_WORKOUT',
@@ -1553,6 +2347,36 @@ Keep it practical with 4-6 exercises.`;
       return;
     }
     
+    // Handle saving an exercise from preview
+    if (reply.action === 'SAVE_EXERCISE') {
+      addMessage(reply.text, 'user');
+      setQuickReplies([]);
+      setIsLoading(true);
+      
+      try {
+        const exerciseData = reply.data;
+        const success = await createExerciseInDatabase(exerciseData.name, exerciseData.muscle_groups);
+        
+        setTimeout(() => {
+          if (success) {
+            addMessage(`✅ Great! I've added "${exerciseData.name}" to your exercise library. You can now use it in any workout!`, 'ai');
+          } else {
+            addMessage(`❌ This exercise might already exist or couldn't be saved. Please check your exercise library.`, 'ai');
+          }
+          setShowExercisePreview(false);
+          setExercisePreview(null);
+          setIsLoading(false);
+        }, 500);
+      } catch (error) {
+        console.error('Error saving exercise:', error);
+        setTimeout(() => {
+          addMessage("❌ Sorry, I couldn't save the exercise. Please try again.", 'ai');
+          setIsLoading(false);
+        }, 500);
+      }
+      return;
+    }
+    
     // Handle saving a workout from preview
     if (reply.action === 'SAVE_WORKOUT') {
       addMessage(reply.text, 'user');
@@ -1560,7 +2384,7 @@ Keep it practical with 4-6 exercises.`;
       setIsLoading(true);
       
       try {
-        const { user } = await supabase.auth.getUser();
+        const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           addMessage("You need to be logged in to save workouts.", 'ai');
           setIsLoading(false);
@@ -1685,25 +2509,37 @@ Keep it practical with 4-6 exercises.`;
           
           if (missingInfo.length === 0) {
             // All info collected, generate plan
-            const plan = generateStructuredPlan();
-            setCurrentPlan(plan);
-            setConversationState('PLAN_READY');
+            addMessage("Creating your personalized workout plan... This may take a moment.", 'ai');
             
-            // Add the success message
-            addMessage(
-              `🎉 Perfect! I've created your personalized workout plan!\n\nYour plan includes ${plan.workouts.length} different workouts optimized for your ${updatedUserInfo.goal} goals. Each workout is designed to fit your ${updatedUserInfo.sessionLength}-minute sessions.`,
-              'ai'
-            );
-            
-            // Add the plan card to chat
-            setTimeout(() => {
-              addMessage(`Your ${plan.plan.name}`, 'ai', 'plan_card', plan);
-            }, 500);
-            
-            // Show the modal after a brief delay
-            setTimeout(() => {
-              setShowPlanModal(true);
-            }, 1000);
+            setTimeout(async () => {
+              const plan = await generateStructuredPlan();
+              setCurrentPlan(plan);
+              setConversationState('PLAN_READY');
+              
+              // Add the success message
+              addMessage(
+                `🎉 Perfect! I've created your personalized workout plan!\n\nYour plan includes ${plan.workouts.length} different workouts optimized for your ${updatedUserInfo.goal} goals. Each workout is designed to fit your ${updatedUserInfo.sessionLength}-minute sessions.`,
+                'ai'
+              );
+              
+              // Add the plan card to chat
+              setTimeout(() => {
+                addMessage(`Your ${plan.plan.name}`, 'ai', 'plan_card', plan);
+                
+                // Set quick replies for plan actions
+                setQuickReplies([
+                  { id: 'apply_plan', text: '✅ Apply These Changes', action: 'APPLY_PLAN' },
+                  { id: 'view_plan', text: '👁️ View Plan Details', action: 'VIEW_PLAN' },
+                  { id: 'edit_plan', text: '✏️ Edit Plan', action: 'EDIT_PLAN' },
+                  { id: 'cancel_plan', text: '❌ Cancel', action: 'CANCEL_PLAN' }
+                ]);
+              }, 500);
+              
+              // Show the modal after a brief delay
+              setTimeout(() => {
+                setShowPlanModal(true);
+              }, 1000);
+            }, 100);
           } else {
             // Ask for the next missing info
             const nextInfo = askForNextInfo(missingInfo[0]);
@@ -1772,6 +2608,73 @@ Keep it practical with 4-6 exercises.`;
     );
   };
 
+  // Handle applying single workout
+  const handleApplySingleWorkout = async () => {
+    if (!workoutPreview) return;
+    
+    addMessage("Saving your workout... This may take a moment.", 'ai');
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        addMessage("You need to be logged in to save workouts.", 'ai');
+        return;
+      }
+      
+      // Save workout to database
+      const { data: workout, error: workoutError } = await supabase
+        .from('workouts')
+        .insert({
+          user_id: user.id,
+          name: workoutPreview.name,
+          estimated_minutes: workoutPreview.estimated_minutes || 45,
+          is_template: true,
+          created_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+      
+      if (workoutError || !workout) {
+        throw new Error('Failed to save workout');
+      }
+      
+      // Save exercises
+      for (const exercise of workoutPreview.exercises) {
+        await supabase.from('workout_exercises').insert({
+          workout_id: workout.id,
+          exercise_name: exercise.name,
+          sets: exercise.sets,
+          reps: exercise.reps,
+          rest_seconds: exercise.rest_seconds,
+          order_index: workoutPreview.exercises.indexOf(exercise),
+        });
+      }
+      
+      // Schedule the workout if days were selected
+      if (workoutPreview.scheduledDays && workoutPreview.scheduledDays.length > 0) {
+        // You might want to add calendar entries here
+        // This would depend on your calendar implementation
+      }
+      
+      setTimeout(() => {
+        const scheduleText = workoutPreview.scheduledDays && workoutPreview.scheduledDays.length > 0
+          ? ` and scheduled for ${workoutPreview.scheduledDays.join(', ')}`
+          : '';
+        
+        addMessage(`✅ Great! I've saved "${workoutPreview.name}" to your workouts${scheduleText}. You can find it in your workout library!`, 'ai');
+        setConversationState('IDLE');
+        setWorkoutPreview(null);
+        setShowWorkoutPreview(false);
+        setQuickReplies([]);
+      }, 500);
+    } catch (error) {
+      console.error('Error saving workout:', error);
+      setTimeout(() => {
+        addMessage("❌ Sorry, I couldn't save the workout. Please try again.", 'ai');
+      }, 500);
+    }
+  };
+  
   // Handle applying workout plan
   const handleApplyWorkout = async () => {
     if (!currentPlan) return;
@@ -1797,10 +2700,11 @@ Keep it practical with 4-6 exercises.`;
                    "Remember to focus on proper form and progressive overload. Good luck with your training! 💪", 'ai');
       }, 500);
       
-      // Reset conversation state
+      // Reset conversation state and clear quick replies
       setConversationState('IDLE');
       setCurrentPlan(null);
       setUserInfo({});
+      setQuickReplies([]);
     } else {
       // Show error message
       addMessage("I encountered an issue while saving your workout plan. Please try again or check your connection.", 'ai');
@@ -1815,7 +2719,15 @@ Keep it practical with 4-6 exercises.`;
   // Handle dismissing plan modal
   const handleDismissPlan = () => {
     setShowPlanModal(false);
-    // Plan card is already in chat, no need to add it again
+    // Keep quick replies available if we're in PLAN_READY state
+    if (conversationState === 'PLAN_READY' && currentPlan) {
+      setQuickReplies([
+        { id: 'apply_plan', text: '✅ Apply These Changes', action: 'APPLY_PLAN' },
+        { id: 'view_plan', text: '👁️ View Plan Details', action: 'VIEW_PLAN' },
+        { id: 'edit_plan', text: '✏️ Edit Plan', action: 'EDIT_PLAN' },
+        { id: 'cancel_plan', text: '❌ Cancel', action: 'CANCEL_PLAN' }
+      ]);
+    }
   };
 
   // Restart AI
@@ -1876,38 +2788,42 @@ Keep it practical with 4-6 exercises.`;
     setCurrentPlan(plan);
     setShowPlanModal(true);
   };
+  
+  // Handle workout card tap
+  const handleWorkoutCardTap = (workout: WorkoutPreview) => {
+    setWorkoutPreview(workout);
+    setShowWorkoutModal(true);
+  };
+  
+  // Handle dismiss workout modal
+  const handleDismissWorkout = () => {
+    setShowWorkoutModal(false);
+  };
 
   // Render message
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isUser = item.sender === 'user';
     
-    // Render workout preview card
+    // Render workout preview card (matching plan card design exactly)
     if (item.type === 'workout_preview' && item.data) {
       const workout = item.data as WorkoutPreview;
       return (
         <View style={[styles.messageContainer, styles.aiMessageContainer]}>
-          <View style={styles.workoutPreviewCard}>
-            <View style={styles.workoutPreviewHeader}>
-              <Ionicons name="barbell" size={20} color="#17D4D4" />
-              <Text style={styles.workoutPreviewTitle}>{workout.name}</Text>
+          <TouchableOpacity 
+            style={styles.planCardContainer}
+            activeOpacity={0.8}
+            onPress={() => handleWorkoutCardTap(workout)}
+          >
+            <View style={styles.planCardHeader}>
+              <Ionicons name="fitness" size={20} color="#17D4D4" />
+              <Text style={styles.planCardTitle}>{workout.name}</Text>
+              <Ionicons name="chevron-forward" size={16} color="#17D4D4" />
             </View>
-            
-            <View style={styles.workoutPreviewExercises}>
-              {workout.exercises.map((exercise, index) => (
-                <View key={index} style={styles.workoutPreviewExercise}>
-                  <Text style={styles.exerciseName}>{exercise.name}</Text>
-                  <Text style={styles.exerciseSets}>{exercise.sets} × {exercise.reps}</Text>
-                </View>
-              ))}
-            </View>
-            
-            {workout.estimated_minutes && (
-              <View style={styles.workoutPreviewFooter}>
-                <Ionicons name="time-outline" size={16} color="#888" />
-                <Text style={styles.workoutDuration}>{workout.estimated_minutes} minutes</Text>
-              </View>
-            )}
-          </View>
+            <Text style={styles.planCardSubtitle}>
+              {workout.exercises.length} exercises • {workout.estimated_minutes || 45} min{workout.scheduledDays && workout.scheduledDays.length > 0 ? ` • ${workout.scheduledDays.length} days/week` : ''}
+            </Text>
+            <Text style={styles.planCardTap}>Tap to view details</Text>
+          </TouchableOpacity>
           
           <Text style={[styles.messageTime, styles.aiTime]}>
             {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1945,20 +2861,21 @@ Keep it practical with 4-6 exercises.`;
     
     // Render plan card
     if (item.type === 'plan_card' && item.data) {
+      const planData = item.data as WorkoutPlan;
       return (
         <View style={[styles.messageContainer, styles.aiMessageContainer]}>
           <TouchableOpacity 
             style={styles.planCardContainer}
-            onPress={() => handlePlanCardTap(item.data!)}
+            onPress={() => handlePlanCardTap(planData)}
             activeOpacity={0.8}
           >
             <View style={styles.planCardHeader}>
               <Ionicons name="fitness" size={20} color="#17D4D4" />
-              <Text style={styles.planCardTitle}>{item.data.plan.name}</Text>
+              <Text style={styles.planCardTitle}>{planData.plan.name}</Text>
               <Ionicons name="chevron-forward" size={16} color="#17D4D4" />
             </View>
             <Text style={styles.planCardSubtitle}>
-              {item.data.workouts.length} workouts • {item.data.plan.days_per_week} days/week • {item.data.plan.length_weeks} weeks
+              {planData.workouts.length} workouts • {planData.plan.days_per_week} days/week • {planData.plan.length_weeks} weeks
             </Text>
             <Text style={styles.planCardTap}>Tap to view details</Text>
           </TouchableOpacity>
@@ -2218,7 +3135,95 @@ Keep it practical with 4-6 exercises.`;
 
                 {/* Apply Button */}
                 <TouchableOpacity style={styles.applyButton} onPress={handleApplyWorkout}>
-                  <Text style={styles.applyButtonText}>Apply Workout Plan</Text>
+                  <Text style={styles.applyButtonText}>Apply These Changes</Text>
+                </TouchableOpacity>
+
+                <View style={{ height: 50 }} />
+              </>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+      
+      {/* Workout Preview Modal */}
+      <Modal
+        visible={showWorkoutModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleDismissWorkout}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={handleDismissWorkout}>
+              <Ionicons name="close" size={24} color="#000000" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Workout Details</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {workoutPreview && (
+              <>
+                {/* Workout Overview */}
+                <View style={styles.planOverview}>
+                  <Text style={styles.planName}>{workoutPreview.name}</Text>
+                  <View style={styles.planDetailsRow}>
+                    <View style={styles.planDetail}>
+                      <Ionicons name="time" size={16} color="#17D4D4" />
+                      <Text style={styles.planDetailText}>{workoutPreview.estimated_minutes || 45} minutes</Text>
+                    </View>
+                    {workoutPreview.scheduledDays && workoutPreview.scheduledDays.length > 0 && (
+                      <View style={styles.planDetail}>
+                        <Ionicons name="calendar" size={16} color="#17D4D4" />
+                        <Text style={styles.planDetailText}>{workoutPreview.scheduledDays.length} days/week</Text>
+                      </View>
+                    )}
+                  </View>
+                  {workoutPreview.scheduledDays && workoutPreview.scheduledDays.length > 0 && (
+                    <Text style={styles.planNotes}>Scheduled for: {workoutPreview.scheduledDays.join(', ')}</Text>
+                  )}
+                </View>
+
+                {/* Exercises */}
+                <Text style={styles.workoutsTitle}>Exercises</Text>
+                <View style={styles.exercisesList}>
+                  {workoutPreview.exercises.map((exercise, index) => (
+                    <View key={index} style={styles.exerciseCard}>
+                      <View style={styles.exerciseHeader}>
+                        <Text style={styles.exerciseName}>{exercise.name}</Text>
+                      </View>
+                      <View style={styles.exerciseDetails}>
+                        <Text style={styles.exerciseSets}>{exercise.sets} sets × {exercise.reps}</Text>
+                        {exercise.rest_seconds && (
+                          <Text style={styles.exerciseRest}>Rest: {exercise.rest_seconds}s</Text>
+                        )}
+                      </View>
+                      {exercise.notes && (
+                        <Text style={styles.exerciseNotes}>{exercise.notes}</Text>
+                      )}
+                      {exercise.muscle_groups && exercise.muscle_groups.length > 0 && (
+                        <View style={styles.muscleGroups}>
+                          {exercise.muscle_groups.map((muscle, idx) => (
+                            <View key={idx} style={styles.muscleTag}>
+                              <Text style={styles.muscleTagText}>{muscle}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+
+                {/* Apply Button */}
+                <TouchableOpacity 
+                  style={styles.applyButton} 
+                  onPress={() => {
+                    handleDismissWorkout();
+                    // Trigger apply workout action
+                    handleQuickReply({ id: 'apply', text: '✅ Apply These Changes', action: 'APPLY_WORKOUT' });
+                  }}
+                >
+                  <Text style={styles.applyButtonText}>Apply This Workout</Text>
                 </TouchableOpacity>
 
                 <View style={{ height: 50 }} />
@@ -2314,7 +3319,7 @@ const styles = StyleSheet.create({
   messageBubble: {
     maxWidth: '85%',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderRadius: 20,
   },
   userBubble: {
@@ -2328,7 +3333,7 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 16,
     fontFamily: 'Poppins-Regular',
-    lineHeight: 20,
+    lineHeight: 24,
   },
   userText: {
     color: '#FFFFFF',
@@ -2375,12 +3380,10 @@ const styles = StyleSheet.create({
   // Quick Replies
   quickRepliesScrollView: {
     maxHeight: 60,
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
   },
   quickRepliesContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 8,
     flexDirection: 'row',
     gap: 8,
   },
@@ -2389,7 +3392,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#17D4D4',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 20,
   },
   quickReplyText: {
@@ -2563,6 +3566,19 @@ const styles = StyleSheet.create({
     gap: 16,
     marginBottom: 8,
   },
+  exerciseHeader: {
+    marginBottom: 4,
+  },
+  exerciseSets: {
+    fontSize: 14,
+    fontFamily: 'Poppins-Regular',
+    color: '#5A5A5A',
+  },
+  exerciseRest: {
+    fontSize: 14,
+    fontFamily: 'Poppins-Regular',
+    color: '#888888',
+  },
   exerciseDetail: {
     alignItems: 'center',
   },
@@ -2652,11 +3668,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
   },
-  workoutDuration: {
-    fontSize: 12,
-    fontFamily: 'Poppins-Regular',
-    color: '#888888',
-  },
   
   // Exercise Preview Card Styles
   exercisePreviewCard: {
@@ -2685,6 +3696,27 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Regular',
     color: '#5A5A5A',
     marginTop: 8,
+  },
+  
+  // Muscle Group Styles
+  muscleGroups: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  muscleTag: {
+    backgroundColor: '#E8F8F8',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#17D4D4',
+  },
+  muscleTagText: {
+    fontSize: 11,
+    fontFamily: 'Poppins-Regular',
+    color: '#17D4D4',
   },
   
   // Plan Card Styles

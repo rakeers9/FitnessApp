@@ -1,0 +1,303 @@
+what you’re looking at (hyper-detailed)
+
+Screen role: branded Splash / Welcome (can also double as a lightweight Loading screen).
+
+Composition (front to back):
+
+Background — full-bleed photographic image of winding terracotta/red dirt switchbacks (aerial/drone perspective). Dominant hues run from deep oxblood to dusty salmon. Focal curvature sits roughly mid-height.
+
+(Optional) Overlay scrim — invisible by default; can be animated in for legibility on top of the photo (e.g., when showing text or a spinner variant).
+
+Center logomark — 4 white shapes forming an abstract monogram/“barbell/equalizer” vibe:
+
+Left wedge: a forward-leaning triangular block with a clipped back edge.
+
+Center pillar: tall rounded rectangle (largest mass).
+
+Right plate: shorter rounded rectangle, aligned mid-pillar.
+
+Right dot/platelet: small rounded rectangle, offset with a narrow gap to read like spacing/a plate collar.
+The mark reads as geometric, bold, and weight-centric—perfect for a fitness brand.
+
+Baseline frame used for specs: 390 × 844 pt (typical iPhone 12–15). All positions are given relative so it scales cleanly.
+
+Color palette (from the photo & logo):
+
+--white: #FFFFFF (logomark)
+
+--terracotta-600: #A84A43
+
+--terracotta-500: #C1635B
+
+--terracotta-400: #D47A71
+
+--oxblood-700: #7D322E
+
+--rose-300: #E59A90
+
+Optional scrim: rgba(0,0,0,0.0 → 0.30) vertical gradient
+
+Accessibility & contrast:
+
+Center logomark on this image achieves adequate perceptual contrast because it sits where the road bends and values are darker. If you ever place text here, enable the scrim to guarantee WCAG legibility.
+
+Layout particulars (390×844 reference):
+
+Background image: cover, pinned to all edges, focal point around (x: 0.52, y: 0.58) in normalized coordinates (keeps the prominent S-curve visible under the logo across devices).
+
+Logomark block frame: width ≈ 158 pt (≈ 40.5% of min(screenW, screenH*0.6)), height auto from aspect ≈ 92 pt. Centered at 50%/50% (safe-area aware). Touch target not required (non-interactive), but accessible label provided for screen readers.
+
+Safe area: standard top/bottom insets; nothing interactive touches the notch or home indicator.
+
+Motion (optional):
+
+Fade-in for BG (0→1 over 450 ms).
+
+Scale-in for logo (0.96→1.00 over 300 ms, ease-out), starting 120 ms after BG begins.
+
+If used as a loading screen: subtle pulse opacity on the logo 0.85↔1.00 (2.2 s loop).
+
+Performance tips:
+
+Provide @1x/@2x/@3x raster sizes; pre-decode the hero on navigation. For RN/Expo, use Image.prefetch or expo-asset to warm the cache.
+
+Consider an average-color placeholder (#9E4E49) while loading.
+
+Variants:
+
+Dark mode: identical (already dark-friendly).
+
+Light mode: identical.
+
+Small devices (≤360dp width): clamp logo max width to min(0.52*screenWidth, 172dp).
+
+Large tablets: cap logo at min(420dp, 0.28*screenHeight) to avoid comical scale.
+
+A11y labels:
+
+Screen: “Brand splash screen with winding red canyon road in the background.”
+
+Logo: “App logo.”
+
+Assets you’ll want to export:
+
+splash_bg_canyon@1x.jpg (1242×2688 suggested min for tall phones)
+
+splash_bg_canyon@2x.jpg
+
+splash_bg_canyon@3x.jpg
+
+logo_mark_solid_white.svg (primary) and logo_mark_solid_white@3x.png (fallback)
+
+machine-readable spec (VALID JSON)
+{
+  "meta": {
+    "version": "1.0.0",
+    "title": "SplashScreen",
+    "description": "Full-bleed canyon-road photo with centered white logomark.",
+    "baselineFrame": { "width": 390, "height": 844, "unit": "pt" },
+    "platforms": ["ios", "android", "web"],
+    "safeAreaAware": true
+  },
+  "designTokens": {
+    "colors": {
+      "white": "#FFFFFF",
+      "terracotta600": "#A84A43",
+      "terracotta500": "#C1635B",
+      "terracotta400": "#D47A71",
+      "oxblood700": "#7D322E",
+      "rose300": "#E59A90",
+      "placeholderAverage": "#9E4E49"
+    },
+    "radii": {
+      "none": 0,
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16,
+      "xl": 24,
+      "full": 9999
+    },
+    "easing": {
+      "inOut": [0.4, 0.0, 0.2, 1.0],
+      "out": [0.0, 0.0, 0.2, 1.0]
+    },
+    "durations": {
+      "fade": 450,
+      "scale": 300,
+      "delaySmall": 120
+    }
+  },
+  "assets": {
+    "images": {
+      "background": {
+        "id": "splash_bg_canyon",
+        "variants": [
+          { "scale": 1, "uri": "assets/splash_bg_canyon@1x.jpg" },
+          { "scale": 2, "uri": "assets/splash_bg_canyon@2x.jpg" },
+          { "scale": 3, "uri": "assets/splash_bg_canyon@3x.jpg" }
+        ],
+        "contentMode": "cover",
+        "focalPoint": { "x": 0.52, "y": 0.58 },
+        "placeholder": { "type": "solid", "color": "{colors.placeholderAverage}" }
+      }
+    },
+    "vectors": {
+      "logoMark": {
+        "id": "logo_mark_solid_white",
+        "format": "svg",
+        "uri": "assets/logo_mark_solid_white.svg",
+        "intrinsicSize": { "width": 790, "height": 460 }
+      }
+    }
+  },
+  "screen": {
+    "id": "SCREEN_SPLASH",
+    "backgroundColor": "{colors.terracotta600}",
+    "layers": [
+      {
+        "id": "LAYER_BG_IMAGE",
+        "type": "Image",
+        "assetRef": "splash_bg_canyon",
+        "frame": { "x": 0, "y": 0, "width": "100%", "height": "100%" },
+        "resizeMode": "cover",
+        "clipToBounds": true,
+        "accessibility": {
+          "role": "image",
+          "label": "Aerial canyon road background",
+          "hidden": false
+        },
+        "animation": {
+          "onMount": {
+            "type": "fadeIn",
+            "from": 0.0,
+            "to": 1.0,
+            "durationMs": "{durations.fade}",
+            "easing": "{easing.inOut}"
+          }
+        }
+      },
+      {
+        "id": "LAYER_SCRIM",
+        "type": "Rectangle",
+        "visible": false,
+        "frame": { "x": 0, "y": 0, "width": "100%", "height": "100%" },
+        "fill": {
+          "type": "gradient",
+          "direction": "vertical",
+          "stops": [
+            { "offset": 0.0, "color": "rgba(0,0,0,0.00)" },
+            { "offset": 0.55, "color": "rgba(0,0,0,0.12)" },
+            { "offset": 1.0, "color": "rgba(0,0,0,0.30)" }
+          ]
+        },
+        "accessibility": { "hidden": true }
+      },
+      {
+        "id": "LAYER_LOGO_WRAPPER",
+        "type": "Group",
+        "frame": {
+          "x": "50%",
+          "y": "50%",
+          "width": { "formula": "min(0.405*W, 0.28*H)" },
+          "height": { "formula": "AUTO" }
+        },
+        "anchor": "center",
+        "children": [
+          {
+            "id": "LAYER_LOGO",
+            "type": "Vector",
+            "assetRef": "logo_mark_solid_white",
+            "tintColor": "{colors.white}",
+            "maintainAspectRatio": true,
+            "frame": { "x": 0, "y": 0, "width": "100%", "height": "auto" },
+            "accessibility": {
+              "role": "image",
+              "label": "App logo",
+              "hidden": false
+            },
+            "animation": {
+              "onMount": [
+                {
+                  "type": "delay",
+                  "durationMs": "{durations.delaySmall}"
+                },
+                {
+                  "type": "scale",
+                  "from": 0.96,
+                  "to": 1.0,
+                  "origin": "center",
+                  "durationMs": "{durations.scale}",
+                  "easing": "{easing.out}"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "behavior": {
+    "interactions": [],
+    "loadingVariant": {
+      "enabled": false,
+      "logoPulse": {
+        "alphaFrom": 0.85,
+        "alphaTo": 1.0,
+        "durationMs": 2200,
+        "easing": "{easing.inOut}",
+        "repeat": "infinite",
+        "yoyo": true
+      }
+    },
+    "timeoutNavigation": {
+      "enabled": false,
+      "milliseconds": 1400,
+      "targetRoute": "HOME"
+    }
+  },
+  "layoutRules": {
+    "breakpoints": [
+      {
+        "id": "phone-compact",
+        "when": { "maxWidth": 360 },
+        "overrides": {
+          "LAYER_LOGO_WRAPPER.frame.width.formula": "min(0.52*W, 172)"
+        }
+      },
+      {
+        "id": "phone-regular",
+        "when": { "minWidth": 361, "maxWidth": 450 },
+        "overrides": {}
+      },
+      {
+        "id": "tablet-large",
+        "when": { "minWidth": 768 },
+        "overrides": {
+          "LAYER_LOGO_WRAPPER.frame.width.formula": "min(420, 0.28*H)"
+        }
+      }
+    ],
+    "safeArea": {
+      "top": true,
+      "bottom": true,
+      "left": true,
+      "right": true
+    }
+  },
+  "a11y": {
+    "screenLabel": "Brand splash screen with winding red canyon road in the background.",
+    "prefersReducedMotion": {
+      "on": {
+        "disableAnimations": true,
+        "visibleScrim": false
+      }
+    }
+  },
+  "telemetry": {
+    "events": [
+      { "name": "Splash.Impression", "at": "mount" },
+      { "name": "Splash.Exit", "at": "unmount" }
+    ]
+  }
+}
