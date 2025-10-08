@@ -54,7 +54,7 @@ const ExperienceScreen: React.FC<ExperienceScreenProps> = ({
   useEffect(() => {
     // Animate progress bar to step 6
     Animated.timing(progressAnim, {
-      toValue: 0.333, // ~33.3% for sixth step (6/18)
+      toValue: 0.5, // 50% for ninth step - Experience Level (9/18)
       duration: 420,
       useNativeDriver: false,
     }).start();
@@ -232,7 +232,9 @@ const styles = StyleSheet.create({
   },
   progressBarContainer: {
     flex: 1,
-    paddingHorizontal: 8,
+    maxWidth: 280, // Fixed max width for consistent size
+    alignSelf: 'center',
+    marginHorizontal: 'auto',
   },
   progressTrack: {
     width: '100%',

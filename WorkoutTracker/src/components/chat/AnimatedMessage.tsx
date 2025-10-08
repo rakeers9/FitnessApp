@@ -16,7 +16,7 @@ const AnimatedMessage: React.FC<AnimatedMessageProps> = ({
   text,
   emphasisParts,
   onComplete,
-  typingSpeed = 15, // Faster typing speed (15ms per character)
+  typingSpeed = 3, // Much faster typing speed (3ms per character)
 }) => {
   const [displayedText, setDisplayedText] = useState('');
   const [isComplete, setIsComplete] = useState(false);

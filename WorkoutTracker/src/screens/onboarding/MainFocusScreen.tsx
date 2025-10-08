@@ -54,7 +54,7 @@ const MainFocusScreen: React.FC<MainFocusScreenProps> = ({
   useEffect(() => {
     // Animate progress bar to step 8
     Animated.timing(progressAnim, {
-      toValue: 0.444, // ~44.4% for eighth step (8/18)
+      toValue: 0.333, // ~33.3% for sixth step - Main Focus (6/18)
       duration: 420,
       useNativeDriver: false,
     }).start();
@@ -232,7 +232,9 @@ const styles = StyleSheet.create({
   },
   progressBarContainer: {
     flex: 1,
-    paddingHorizontal: 8,
+    maxWidth: 280, // Fixed max width for consistent size
+    alignSelf: 'center',
+    marginHorizontal: 'auto',
   },
   progressTrack: {
     width: '100%',

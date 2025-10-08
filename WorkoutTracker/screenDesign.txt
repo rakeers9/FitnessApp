@@ -1,301 +1,470 @@
-Below are **two generator-ready specs** for the “Connect with Apple Health” step. They use an **iPhone 13 viewport (390×844)**, **Poppins** font, and your base palette (**Blue #17D4D4, Black #000000, White #FFFFFF**). All content sits in a **342-px content column** (24-px gutters) and follows an **8-pt vertical rhythm**.
+Below is a **generator-ready UI spec** for the single, scrollable screen shown (the “Plan is ready” summary). Measurements assume an **iPhone 13 viewport (390 × 844)**. Typography is **Poppins**. Palette: **Blue #17D4D4**, **Black #000000**, **White #FFFFFF**. The page uses a **24 px side gutter**, giving a **342 px content column**.
 
 ---
 
-# Screen A — Connect with Apple Health (default, no system alert, Continue disabled)
+# Screen — Plan summary (“Your plan is ready”)
 
 ## Background
 
-* **Solid black** `#000000` (token: `base/background`), 100% opacity, fills entire canvas including safe areas.
+* **Solid black** `#000000` (token `base/background`), 100% opacity, fills the entire canvas and safe areas.
 
-## Layout (structure & alignment)
+## Global layout & grid
 
-* **Root:** Safe-area aware vertical stack (`flexDirection: column; alignItems: stretch;`).
-* **Content column width:** **342 px** (`390 − 24 − 24`).
-* **Top row:** progress bar (left, flexible width) + “Skip” label (right). Internal gap **12 px**.
-* **Title** below top row.
-* **Supporting copy** below title.
-* **“Connect with Apple Health” button** under body copy.
-* **Primary CTA** (“Continue”) pinned above the bottom safe area.
-* All left-aligned elements snap to the **24-px left gutter**; centered items (progress track, buttons) are visually centered inside the **342-px column**.
+* **Root container:** vertical flex stack, `align-items: stretch`, safe-area aware.
+* **Content column:** fixed **342 px** width centered within viewport by **24 px** left/right padding (gutter).
+* **Vertical rhythm:** 8-pt base; all spacings are multiples of 4/8.
+* **Scroll:** content is a single scroll view; bottom CTA sits inside the scroller with extra padding to clear the home indicator.
 
-**Vertical spacing (approx.)**
+### Top cluster (progress + skip)
 
-* Safe-top → top row: **16 px**
-* Top row → Title: **24 px**
-* Title → Supporting copy: **8 px**
-* Supporting copy → Apple Health button: **16 px**
-* Apple Health button → CTA button: **auto** (flex fill); ensure **≥ 40 px** breathing room.
-* CTA button → bottom safe area: **24 px**
+* **Y offset from safe top:** ~**16 px**.
+* **Row:** progress bar (left, flexible width) + “Skip” text (right).
+* **Internal spacing:** **12 px** between bar and Skip label.
+* **Row height (visual):** **20–24 px**.
 
-## Logo / icons
+### Headline & subhead
 
-* **None** in the header.
-* **Inside Apple Health button** (left leading icon):
+* **Headline top margin (from row):** **24 px**.
+* **Subhead margin (from headline):** **8 px**.
 
-  * **Container:** **28×28 px**, corner radius **6 px**, background **#FFFFFF**, 100% opacity.
-  * **Glyph:** Heart-style icon centered within the 28×28 container.
+### Sections (stacked, full-width cards within the column)
 
-    * **Fill color:** Apple Health pink/red **#FF2D55** (use an SF Symbol `heart.fill` or your asset).
-    * **Size:** **16×16 px**.
-  * **Spacing:** **10 px** gap from icon container’s right edge to the button label.
+1. **Coach message card** (with avatar).
+2. **Your outline** information card (2-column grid).
+3. **Goal weight chart** card.
+4. **Weekly plan** header + day chips row.
+5. **Day 1 detail** workout card.
+6. **Primary CTA** “Get started” pinned near bottom with **24 px** bottom padding to the safe area.
 
-## Text elements
+---
+
+## Status / Navigation elements
+
+### Progress bar
+
+* **Track:** height **6 px**, radius **3 px**, color `#3A3A3A`.
+* **Fill:** color **#17D4D4**, radius **3 px**.
+* **Value on this screen:** **~82–85%** (as shown near the end of onboarding).
+* **Width:** fills remaining space to the left of “Skip” within the **342 px** column.
+* **Animation:** on mount, animate fill from previous step to current (e.g., 0.72 ➜ 0.84) over **420 ms** ease-out.
 
 ### Skip (top-right)
 
-* **Content:** `Skip`
-* **Font:** Poppins **400**, **14 px** size, **20 px** line height.
+* **Text:** `Skip`
+* **Font:** Poppins **400**, **14 px**, line height **20 px**.
 * **Color:** `#9A9A9A` (≈60% white).
-* **Alignment / hit area:** Right edge of the 342-px column; expand tap target to **≥44×32 px** with invisible padding.
-
-### Title
-
-* **Content:** `Connect with apple health`
-* **Font:** Poppins **600** (SemiBold), **24 px** size, **32 px** line height.
-* **Color:** `#FFFFFF`
-* **Alignment:** Left to 24-px gutter; wraps within 342-px column.
-
-### Supporting copy
-
-* **Content:** `This is so our AI can help understand and serve you better`
-* **Font:** Poppins **400**, **14 px** size, **20 px** line height.
-* **Color:** `#C8C8C8` (muted foreground ≈78% white).
-* **Alignment:** Left to 24-px gutter; wrap within 342-px column.
-
-## Progress bar (within top row)
-
-* **Height:** **6 px**; **corner radius:** **3 px** (fully rounded ends).
-* **Track color:** `#3A3A3A`.
-* **Fill color:** `#17D4D4`.
-* **Value:** **0.64** (≈64% filled).
-* **Animation:** on enter, fill animates **0 → 0.64** over **420 ms** (ease-out).
-
-## Buttons
-
-### Apple Health connect button
-
-* **Frame:** **342 × 48 px** (compact control height).
-* **Corner radius:** **12 px**.
-* **Background:** `#2A2A2A`.
-* **Border:** **1 px** `#FFFFFF14` (8%-10% white) for a subtle edge.
-* **Internal padding:** **14 px** left/right, **10–12 px** vertical; content is horizontally left-aligned (icon + label).
-* **Label:** `Connect with apple health`
-
-  * Poppins **500**, **14 px**, **20 px** line height, **color `#FFFFFF`**, centered on the button’s vertical axis.
-* **States:**
-
-  * **Default:** as above.
-  * **Hover (web/desktop):** background `#323232`.
-  * **Pressed:** background `#242424`, **scale 0.98** for **80–100 ms**.
-  * **Focus visible:** **2 px** outer ring **#17D4D4** (offset 2 px).
-  * **Disabled:** not used for this control; it is always tappable here.
-
-### Primary CTA — Continue (disabled)
-
-* **Frame:** **342 × 56 px**; **x=24**; **y = bottomSafe − 24 − 56**.
-* **Corner radius:** **28 px** (pill).
-* **Background:** `#5A5A5A`.
-* **Label:** `Continue`, Poppins **500**, **16 px**, **20–24 px** line height, **color `#9A9A9A`**.
-* **Shadow:** none when disabled.
-* **Interaction:** taps ignored; opacity remains **1.0** (use color to convey disabled).
-
-## Visual effects
-
-* Flat canvas (no gradients).
-* Only progress fill and pressed micro-scale animations are active.
-
-## Padding & margins (explicit)
-
-* **Page left/right padding:** **24 px**
-* **Top row internal gap (bar ↔ Skip):** **12 px**
-* **Icon ↔ label gap within Apple button:** **10 px**
-* **Bottom spacing under CTA:** **24 px** to bottom safe area.
-
-## Responsiveness
-
-* **≥ 360 px width:** keep **24-px** gutters; 342-px column.
-* **< 360 px width:** reduce gutters to **16 px** (column = `w − 32`); maintain all vertical spacings.
-* Copy can wrap to multiple lines; button heights remain fixed.
-
-## Animation / transitions
-
-* Progress: **0 → 64%** in **420 ms** (ease-out).
-* Apple button press: **scale 0.98**; background darken **80–100 ms** (ease-out).
-* Reduce Motion: replace scale with **opacity 0.9 → 1.0**.
-
-## Styling consistency
-
-* CTAs across onboarding use **56-px height**, **28-px radius**.
-* Utility buttons (lists/integration) use **48-px height**, **12-px radius**, subtle **1-px** borders.
-* Brand **#17D4D4** reserved for **progress/focus**.
-
-### Component hierarchy (JSON)
-
-```json
-{
-  "screen": "Connect with Apple Health - Default",
-  "components": [
-    { "type": "background", "color": "#000000" },
-    {
-      "type": "row",
-      "id": "topRow",
-      "frame": { "x": 24, "ySafeTopOffset": 16, "w": 342, "h": 20, "gap": 12 },
-      "children": [
-        { "type": "progressBar", "flex": 1, "h": 6, "radius": 3, "trackColor": "#3A3A3A", "fillColor": "#17D4D4", "value": 0.64, "animateOnEnterMs": 420 },
-        { "type": "text", "content": "Skip", "font": { "family": "Poppins", "weight": 400, "size": 14, "lineHeight": 20, "color": "#9A9A9A" }, "tapTarget": { "minW": 44, "minH": 32 } }
-      ]
-    },
-    { "type": "text", "id": "title", "content": "Connect with apple health", "frame": { "x": 24, "yAfter": "topRow", "marginTop": 24, "w": 342 }, "font": { "family": "Poppins", "weight": 600, "size": 24, "lineHeight": 32, "color": "#FFFFFF" } },
-    { "type": "text", "id": "body", "content": "This is so our AI can help understand and serve you better", "frame": { "x": 24, "yAfter": "title", "marginTop": 8, "w": 342 }, "font": { "family": "Poppins", "weight": 400, "size": 14, "lineHeight": 20, "color": "#C8C8C8" } },
-    {
-      "type": "button",
-      "id": "connectAppleHealth",
-      "variant": "secondary/filled",
-      "frame": { "x": 24, "yAfter": "body", "marginTop": 16, "w": 342, "h": 48, "radius": 12 },
-      "background": "#2A2A2A",
-      "border": { "w": 1, "color": "#FFFFFF14" },
-      "iconLeading": { "w": 28, "h": 28, "radius": 6, "background": "#FFFFFF", "glyph": { "name": "heart.fill", "size": 16, "color": "#FF2D55" }, "gapToLabel": 10 },
-      "label": { "text": "Connect with apple health", "font": { "family": "Poppins", "weight": 500, "size": 14, "lineHeight": 20, "color": "#FFFFFF" } }
-    },
-    { "type": "button", "id": "continue", "label": "Continue", "frame": { "x": 24, "yFromBottomSafe": 24, "w": 342, "h": 56, "radius": 28 }, "background": "#5A5A5A", "textColor": "#9A9A9A", "enabled": false }
-  ]
-}
-```
+* **Tap target:** expand to **≥44×32 px** with invisible padding.
+* **Alignment:** right edge of content column.
 
 ---
 
-# Screen B — Connect with Apple Health (after tap, **iOS permission alert visible**, Continue still disabled)
+## Headline & subhead
 
-> Same base layout and styles as Screen A. The difference is a **system modal** overlaid above content.
+### Headline
 
-## Background
+* **Text:** `Lil Gayboy, your plan is ready!`
+* **Font:** Poppins **600** (SemiBold), **28 px**, line height **36 px**.
+* **Color:** `#FFFFFF`.
+* **Alignment:** left (to 24-px gutter).
+* **Max width:** 342 px; allow 2–3 lines on small devices.
 
-* **Solid black** `#000000`, identical to Screen A.
+### Subhead
 
-## Layout
+* **Text:** `Designed around your goals & training style`
+* **Font:** Poppins **400**, **16 px**, line height **24 px**.
+* **Color:** `#C8C8C8` (muted foreground).
+* **Alignment:** left.
 
-* Base content is the same (progress + title + body + Apple button + CTA).
-* **Modal overlay:** a system permission alert appears centered above all content. Add an underlay scrim to communicate modality.
+---
 
-## Text elements (base)
+## Section 1 — Coach message card (with avatar)
 
-* **Title:** `Connect with apple health` — Poppins **600**, **24/32**, **#FFFFFF**.
-* **Body:** `This is so our AI can help understand and serve you better` — Poppins **400**, **14/20**, **#C8C8C8`.
-* **Skip:** `Skip` — Poppins **400**, **14/20**, **#9A9A9A`.
+### Layout
 
-## Progress bar
+* **Row container** with avatar on the left and a message card on the right.
+* **Vertical margin (from subhead):** **20 px**.
+* **Avatar block:**
 
-* **Track:** `#3A3A3A`; **fill:** `#17D4D4`; **value:** **0.66** (slightly further than Screen A).
-* **Animation:** if you navigate here from Screen A, fill animates from previous value to **0.66** over **420 ms**.
+  * **Outer container:** **44×44 px** square, corner radius **12 px**, background **#0F0F0F**, 1-px border `#2A2A2A`, subtle inner shadow `rgba(0,0,0,0.35)` (optional).
+  * **Inner orb:** centered **28 px** diameter circle with a blue-green gradient (see below).
+  * **Glow:** outer drop glow **0 8 18 rgba(23,212,212,0.22)** (very subtle).
+  * **Gradient for orb (top-left ➜ bottom-right):**
 
-## Apple Health connect button
+    * **Stop 0:** **#01AB7B** (teal-green) at 0%.
+    * **Stop 1:** **#3BADE6** (blue-cyan) at 100%.
+    * Multiply a **noise grain** overlay at ~**10–14%** opacity if available.
+* **Gap between avatar and card:** **12 px**.
 
-* Same measurements as Screen A (**342×48**, radius **12**, bg `#2A2A2A`, 1-px `#FFFFFF14` border, 28-px white icon capsule with `heart.fill`).
+### Message card (right)
 
-## System modal (permission alert)
+* **Size:** expands to fill the remainder of the **342 px** column minus avatar+gap; typical width ≈ **286 px**; height auto.
+* **Background:** `#121212`.
+* **Border:** **1 px** `#2A2A2A`.
+* **Corner radius:** **14–16 px** (match your other cards; use 16 px if undecided).
+* **Padding:** **16 px** all sides.
+* **Header text (“Coach”):**
 
-> This is an **OS-controlled** alert; exact styling varies by iOS, but you can simulate it for mock and block input behind it.
+  * Poppins **500**, **14 px**, **#C8C8C8**.
+  * Bottom margin to body: **8 px**.
+* **Body text:**
 
-* **Underlay scrim:** `rgba(0,0,0,0.40)` covering the entire screen (no blur).
-* **Alert container:** centered on screen; **width ≈ 300 px**, **min-height ≈ 172 px**, **corner radius 14 px**.
+  * **Content:**
+    `Great! Using all the information you’ve given me, I’ve put together this plan for you. Based on your target weight, I think we should aim for a 12 week plan, where you can expect to be around the weight you want to be, given you follow a good diet of course;)!`
+  * **Font:** Poppins **400**, **15 px**, **24 px** line height (comfortable reading).
+  * **Color:** `#EDEDED` (≈93% white).
+  * **Alignment:** left.
 
-  * **Background:** iOS dark vibrancy approximation `#1F1F21` (or light gray if following the screenshot); for neutrality you may set `#FFFFFF` in light alert with **1-px** `#CFCFCF` border.
-* **Alert title (bold):**
+---
 
-  * **Content:** `"Kalops" would like to access Health`
-  * **Font:** **System** (or Poppins mimic) **600**, **17 px**, **22 px** line height.
-  * **Color:** If dark alert → `#FFFFFF`; if light alert → `#111111`.
-  * **Alignment:** centered.
-* **Alert body (message):**
+## Section 2 — Your outline (two-column key facts)
 
-  * **Content:** `Here’s some alert text. It can span multiple lines if needed!`
-  * **Font:** **System/Poppins 400**, **13 px**, **18 px** line height.
-  * **Color:** dark alert → `#D1D1D1`; light alert → `#3A3A3A`.
-  * **Alignment:** centered; **top margin 6–8 px** below title.
-* **Alert actions row:** two buttons, equal width.
+### Section header
 
-  * **Left:** `Allow` (system blue, e.g., `#0A84FF`, 17 px, medium).
-  * **Right:** `Don’t Allow` (system blue `#0A84FF`, 17 px, medium).
-  * **Button height:** **44 px**; **separator line** between actions as per iOS; **top divider** above actions optional by OS.
-  * **Corner handling:** matching container’s **14-px** radii at bottom.
+* **Text:** `Your outline`
+* **Font:** Poppins **600**, **20 px**, line height **28 px**, **#FFFFFF**.
+* **Top margin (from coach card):** **24 px**.
+* **Bottom margin to card:** **12 px**.
 
-**Interaction notes**
+### Outline card (grid)
 
-* **Focus:** Background content is **not interactive** while the alert is visible.
-* **Dismissal:** Tap on actions or outside (if system allows) to close.
-* **Transition:** Use iOS-like springy fade/scale (**opacity 0 → 1**, **scale 0.95 → 1**, **180–220 ms**).
+* **Frame:** full column **342 px** width.
+* **Background:** `#121212`.
+* **Border:** **1 px** `#2A2A2A`.
+* **Corner radius:** **16 px**.
+* **Padding:** **16 px** top/bottom, **18–20 px** sides.
+* **Grid:** **2 columns**, equal width, **row gap 18 px**, **column gap 24 px**.
+* **Items (left / right pairs):**
 
-## Primary CTA — Continue (still disabled while permission unresolved)
+  1. **Goal** / **Age**
 
-* Same sizing/position as Screen A: **342×56**, radius **28**, background **#5A5A5A**, label **#9A9A9A**, **disabled**.
+     * Labels: Poppins **500**, **13 px**, `#9A9A9A`.
+     * Values: `Gain Muscle` / `22` — Poppins **600**, **16 px**, `#FFFFFF`.
+  2. **Fitness level** / **Gender**
 
-## Visual effects
+     * Values: `Advanced` / `Male` — Poppins **600**, **16 px**, `#FFFFFF`.
+  3. **Weight** / **Cardio Fitness**
 
-* **Modal scrim** `rgba(0,0,0,0.40)`.
-* Alert **elevation shadow** (if you simulate): `0 8 24 rgba(0,0,0,0.45)`.
+     * Values: `71 kg` / `Moderate` — Poppins **600**, **16 px**, `#FFFFFF`.
+  4. **Optimal intensity** / **Injuries**
+
+     * Values: `Moderate` / `Knees` — Poppins **600**, **16 px**, `#FFFFFF`.
+
+---
+
+## Section 3 — Goal weight chart (card)
+
+### Card shell
+
+* **Top margin (from outline card):** **20–24 px**.
+* **Background:** `#121212`.
+* **Corner radius:** **16 px**.
+* **Border:** **1 px** `#2A2A2A`.
+* **Padding:** **16 px** top/bottom, **18–20 px** sides.
+* **Internal vertical spacing:** **12 px** between elements.
+
+### Titles
+
+* **Main:** `Goal weight chart` — Poppins **600**, **18 px**, **#FFFFFF**.
+* **Sub:** `Body weight progression according to plan` — Poppins **400**, **14 px**, **#C8C8C8**.
+
+### Chart area
+
+* **Plot frame:** **fill width** (≈342 px minus inner padding) by **~180–200 px** height.
+* **Gridlines:** 2–3 horizontal lines, color `#2A2A2A`, **1 px**, 30–40% opacity.
+* **Axes labels (x):** `Jan  Feb  Mar  Apr  May  Jun` — Poppins **400**, **12–13 px**, `#9A9A9A`, top padding ~**8 px** after the plot.
+* **Series style:**
+
+  * **Area fill:** teal **#0D6A63** at **65%** opacity (blend mode normal).
+  * **Line stroke:** lighter teal **#149E8F**, width **2 px**, rounded caps.
+  * **Animation:** path draws left➜right over **700 ms** (ease-in-out), fill fades from 0.0➜0.65 over **450 ms**.
+
+### Insight footer (within the card)
+
+* **Primary line:** `Trending down by 5.2% in 6 months` + trend icon.
+
+  * Font: Poppins **500**, **15 px**, `#FFFFFF`.
+  * Icon: small diagonal-down arrow or “trending down” glyph **16×16 px**, color **#17D4D4**; **8 px** gap from text.
+* **Secondary line:** `January – June 2024` — Poppins **400**, **14 px**, `#C8C8C8`.
+* **Top margin to insight:** **10–12 px** beneath axis labels.
+
+---
+
+## Section 4 — Weekly plan (tabs / chips)
+
+### Section header
+
+* **Text:** `Weekly plan`
+* **Font:** Poppins **600**, **20 px**, `#FFFFFF`.
+* **Top margin (from chart card):** **24 px**.
+* **Bottom margin to chips row:** **12 px**.
+
+### Day chips row
+
+* **Layout:** horizontal stack, 3 cards per row on 390-px width with **12 px** gaps.
+  Each chip has **flex:1** (≈ (342 − 24) / 3 ≈ **106 px** wide).
+* **Chip shell (default/idle):**
+
+  * **Height:** **64 px**.
+  * **Corner radius:** **12 px**.
+  * **Background:** `#121212`.
+  * **Border:** **1 px** `#2A2A2A`.
+  * **Internal padding:** **12 px**.
+  * **Right icon:** calendar outline **20×20 px**, `#C8C8C8`, placed in the top-right corner (absolute inside chip), **4–6 px** inset.
+* **Copy inside chip:**
+
+  * **Top label:** `Day 1`, `Day 2`, `Day 3` — Poppins **500**, **12–13 px**, `#9A9A9A`.
+  * **Main:** `Push`, `Pull`, `Legs` — Poppins **600**, **16 px**, `#FFFFFF`, top margin **2–4 px** from label.
+* **Selected state (if applicable):**
+
+  * **Background:** `#1A1A1A`.
+  * **Border:** **1 px** **#17D4D4**.
+  * **Calendar icon:** `#17D4D4`.
+  * **Focus ring (keyboard/TV/web):** **2 px** outside glow `#17D4D4` with **2 px** offset.
+
+---
+
+## Section 5 — Day 1 detail (workout list)
+
+### Card shell
+
+* **Top margin (from chips row):** **16 px**.
+* **Background:** `#121212`.
+* **Corner radius:** **16 px**.
+* **Border:** **1 px** `#2A2A2A`.
+* **Padding:** **16 px** top/bottom, **18–20 px** sides.
+* **Row divider between exercises:** **1 px** `#2A2A2A` with **12 px** vertical padding around each row.
+
+### Title & subtitle
+
+* **Title:** `Day 1: Push` — Poppins **600**, **18 px**, `#FFFFFF`.
+* **Subtitle:** `Chest, shoulders, and Triceps` — Poppins **400**, **14 px**, `#C8C8C8`.
+* **Spacing:** **6–8 px** between title and subtitle; **12–14 px** to the first exercise row.
+
+### Exercise rows (examples shown)
+
+Each row is two lines: exercise name (emphasis) + scheme (sets × reps, weight, rest).
+
+* **Name:** Poppins **600**, **16 px**, `#FFFFFF`.
+* **Scheme:** e.g., `4×8  65 lbs  90s rest` — Poppins **400**, **14 px**, `#C8C8C8`.
+* **Rows in mock:**
+
+  1. **Bench Press** — `4×8  65 lbs  90s rest`
+  2. **Dumbbell shoulder press** — `4×8  65 lbs  90s rest`
+  3. **Tricep rope pushdown** — `4×8  65 lbs  90s rest`
+  4. **Plank** — `4×8  65 lbs  90s rest`
+
+---
+
+## Primary CTA — Get started
+
+* **Frame:** **342 × 56 px**; positioned after the Day 1 card with enough bottom spacing to the home indicator.
+* **Corner radius:** **28 px** (pill).
+* **Background:** `#E5E5E5` (token `base/primary` in your kits).
+* **Label:** `Get started` — Poppins **500**, **16 px**, `#000000`.
+* **Shadow:** subtle lift on enabled: `0 4 12 rgba(0,0,0,0.30)`.
+* **States:**
+
+  * **Hover (web):** background `#F0F0F0`.
+  * **Pressed:** background `#D9D9D9`, scale **0.985** for **80–100 ms**.
+  * **Focus visible:** **2 px** outside stroke `#17D4D4` with **2 px** offset.
+  * **Disabled (not used here):** background `#5A5A5A`, text `#9A9A9A`.
+
+---
+
+## Icons & decorative elements
+
+* **Avatar orb gradient** (inside 44×44 container):
+
+  * Linear gradient **225°**:
+
+    * 0% **#01AB7B** (teal-green)
+    * 100% **#3BADE6** (blue-cyan)
+  * Optional **radial brighten** spot (top-left) **rgba(255,255,255,0.12)** at **20%** radius for a soft specular.
+  * Optional **grain texture** overlay **10–14%**.
+* **Trend icon** (inside chart footer):
+
+  * Size **16×16 px**, stroke width **1.8 px**, color **#17D4D4**.
+* **Calendar icons on chips:**
+
+  * Size **20×20 px**, stroke color `#C8C8C8` (selected `#17D4D4`).
+
+---
+
+## Spacing summary (approx.)
+
+* **Safe top ➜ progress row:** **16 px**
+* **Progress row ➜ headline:** **24 px**
+* **Headline ➜ subhead:** **8 px**
+* **Subhead ➜ coach row:** **20 px**
+* **Coach row ➜ “Your outline” header:** **24 px**
+* **Header ➜ outline card:** **12 px**
+* **Outline card bottom ➜ chart card top:** **20–24 px**
+* **Chart card bottom ➜ “Weekly plan” header:** **24 px**
+* **Header ➜ chips row:** **12 px**
+* **Chips row ➜ Day 1 card:** **16 px**
+* **Day 1 card ➜ CTA:** **24 px**
+* **CTA ➜ bottom safe area:** **24 px**
+
+---
 
 ## Responsiveness
 
-* Identical to Screen A; alert remains centered and max width **min(300 px, column width − 24 px)** on very small devices.
+* **≥390 px width:** keep **24 px** gutters and 3 chips per row.
+* **360–389 px:** reduce gutter to **20 px** (column = `w − 40`); chips become **min-width 100 px**; keep 3 per row with tighter gaps (**8–10 px**).
+* **<360 px:** allow chips to wrap (2 per row) with **12 px** vertical gap; everything else flows naturally.
+* Text wraps; cards remain full-width; CTA keeps **56 px** height and **28 px** radius.
 
-## Animation / transitions
+---
 
-* Progress fill to **66%** over **420 ms**.
-* Alert mount: **fade/scale in (200 ms)**; unmount: **fade/scale out (160 ms)**.
-* Reduce Motion: **opacity only**.
+## Animation & transitions (gentle)
+
+* **Progress fill:** ease-out **420 ms** on mount.
+* **Chart line/area:** draw/fade **700 ms**; delay **120 ms** after mount.
+* **Chip selection:** background/border color transition **120 ms**; calendar icon color **120 ms**.
+* **CTA press:** scale **0.985** for **90 ms**; shadow intensifies briefly.
+
+---
 
 ## Styling consistency
 
-* **CTA (56/28)** and **utility button (48/12)** sizing consistent with the rest of onboarding.
-* **Brand #17D4D4** used only for **progress/focus**; not used to color the Apple permission modal (OS-controlled).
+* All **cards** share: background `#121212`, border `1 px #2A2A2A`, radius **16 px**.
+* All **pills (CTA)** share: height **56 px**, radius **28 px**, medium label **16 px**.
+* **Section headers** use Poppins **600**, sizes **18–20 px**; **body** uses **14–16 px** with muted `#C8C8C8`.
+* **Brand color #17D4D4** is reserved for **progress fill**, **focus rings**, and **accent icons** (e.g., trend, selected chips), not for long-form text.
 
-### Component hierarchy (JSON)
+---
+
+## Component hierarchy (JSON-style)
 
 ```json
 {
-  "screen": "Connect with Apple Health - Permission Modal",
+  "screen": "Plan Summary",
   "components": [
     { "type": "background", "color": "#000000" },
     {
       "type": "row",
       "id": "topRow",
-      "frame": { "x": 24, "ySafeTopOffset": 16, "w": 342, "h": 20, "gap": 12 },
+      "frame": { "x": 24, "ySafeTopOffset": 16, "w": 342, "gap": 12 },
       "children": [
-        { "type": "progressBar", "flex": 1, "h": 6, "radius": 3, "trackColor": "#3A3A3A", "fillColor": "#17D4D4", "value": 0.66, "animateOnEnterMs": 420 },
+        { "type": "progressBar", "h": 6, "radius": 3, "trackColor": "#3A3A3A", "fillColor": "#17D4D4", "value": 0.84 },
         { "type": "text", "content": "Skip", "font": { "family": "Poppins", "weight": 400, "size": 14, "lineHeight": 20, "color": "#9A9A9A" } }
       ]
     },
-    { "type": "text", "id": "title", "content": "Connect with apple health", "frame": { "x": 24, "yAfter": "topRow", "marginTop": 24, "w": 342 }, "font": { "family": "Poppins", "weight": 600, "size": 24, "lineHeight": 32, "color": "#FFFFFF" } },
-    { "type": "text", "id": "body", "content": "This is so our AI can help understand and serve you better", "frame": { "x": 24, "yAfter": "title", "marginTop": 8, "w": 342 }, "font": { "family": "Poppins", "weight": 400, "size": 14, "lineHeight": 20, "color": "#C8C8C8" } },
+    { "type": "text", "id": "headline", "content": "Lil Gayboy, your plan is ready!", "frame": { "x": 24, "yAfter": "topRow", "marginTop": 24, "w": 342 }, "font": { "family": "Poppins", "weight": 600, "size": 28, "lineHeight": 36, "color": "#FFFFFF" } },
+    { "type": "text", "id": "subhead", "content": "Designed around your goals & training style", "frame": { "x": 24, "yAfter": "headline", "marginTop": 8, "w": 342 }, "font": { "family": "Poppins", "weight": 400, "size": 16, "lineHeight": 24, "color": "#C8C8C8" } },
+
     {
-      "type": "button",
-      "id": "connectAppleHealth",
-      "frame": { "x": 24, "yAfter": "body", "marginTop": 16, "w": 342, "h": 48, "radius": 12 },
-      "background": "#2A2A2A",
-      "border": { "w": 1, "color": "#FFFFFF14" },
-      "iconLeading": { "w": 28, "h": 28, "radius": 6, "background": "#FFFFFF", "glyph": { "name": "heart.fill", "size": 16, "color": "#FF2D55" }, "gapToLabel": 10 },
-      "label": { "text": "Connect with apple health", "font": { "family": "Poppins", "weight": 500, "size": 14, "lineHeight": 20, "color": "#FFFFFF" } }
+      "type": "row",
+      "id": "coachRow",
+      "frame": { "x": 24, "yAfter": "subhead", "marginTop": 20, "w": 342, "gap": 12 },
+      "children": [
+        {
+          "type": "avatar",
+          "frame": { "w": 44, "h": 44, "radius": 12, "border": { "w": 1, "color": "#2A2A2A" }, "background": "#0F0F0F" },
+          "orb": { "diameter": 28, "gradient": ["#01AB7B", "#3BADE6"], "glow": "rgba(23,212,212,0.22)" }
+        },
+        {
+          "type": "card",
+          "id": "coachCard",
+          "frame": { "w": "fill", "radius": 16, "border": { "w": 1, "color": "#2A2A2A" }, "background": "#121212", "padding": 16 },
+          "children": [
+            { "type": "text", "content": "Coach", "font": { "family": "Poppins", "weight": 500, "size": 14, "lineHeight": 20, "color": "#C8C8C8" }, "marginBottom": 8 },
+            { "type": "text", "content": "Great! Using all the information you’ve given me, I’ve put together this plan for you. Based on your target weight, I think we should aim for a 12 week plan, where you can expect to be around the weight you want to be, given you follow a good diet of course;)!", "font": { "family": "Poppins", "weight": 400, "size": 15, "lineHeight": 24, "color": "#EDEDED" } }
+          ]
+        }
+      ]
     },
-    { "type": "button", "id": "continue", "label": "Continue", "frame": { "x": 24, "yFromBottomSafe": 24, "w": 342, "h": 56, "radius": 28 }, "background": "#5A5A5A", "textColor": "#9A9A9A", "enabled": false },
+
+    { "type": "text", "id": "outlineHeader", "content": "Your outline", "frame": { "x": 24, "yAfter": "coachRow", "marginTop": 24, "w": 342 }, "font": { "family": "Poppins", "weight": 600, "size": 20, "lineHeight": 28, "color": "#FFFFFF" } },
     {
-      "type": "overlay",
-      "id": "permissionModal",
-      "scrim": { "color": "rgba(0,0,0,0.40)" },
-      "dialog": {
-        "frame": { "xCenter": true, "yCenter": true, "w": 300, "minH": 172, "radius": 14 },
-        "background": "#FFFFFF",
-        "border": { "w": 1, "color": "#CFCFCF" },
-        "title": { "text": "\"Kalops\" would like to access Health", "font": { "family": "Poppins", "weight": 600, "size": 17, "lineHeight": 22, "color": "#111111" }, "align": "center", "marginTop": 16 },
-        "message": { "text": "Here’s some alert text. It can span multiple lines if needed!", "font": { "family": "Poppins", "weight": 400, "size": 13, "lineHeight": 18, "color": "#3A3A3A" }, "align": "center", "marginTop": 8 },
-        "actions": [
-          { "label": "Allow", "style": "systemBlue", "font": { "family": "Poppins", "weight": 500, "size": 17 }, "frame": { "h": 44 } },
-          { "label": "Don't Allow", "style": "systemBlue", "font": { "family": "Poppins", "weight": 500, "size": 17 }, "frame": { "h": 44 } }
-        ]
-      }
-    }
+      "type": "card",
+      "id": "outlineCard",
+      "frame": { "x": 24, "yAfter": "outlineHeader", "marginTop": 12, "w": 342, "radius": 16, "border": { "w": 1, "color": "#2A2A2A" }, "background": "#121212", "padding": 18 },
+      "grid": { "columns": 2, "colGap": 24, "rowGap": 18 },
+      "items": [
+        { "label": "Goal", "value": "Gain Muscle" },
+        { "label": "Age", "value": "22" },
+        { "label": "Fitness level", "value": "Advanced" },
+        { "label": "Gender", "value": "Male" },
+        { "label": "Weight", "value": "71 kg" },
+        { "label": "Cardio Fitness", "value": "Moderate" },
+        { "label": "Optimal intensity", "value": "Moderate" },
+        { "label": "Injuries", "value": "Knees" }
+      ],
+      "labelStyle": { "font": { "family": "Poppins", "weight": 500, "size": 13, "lineHeight": 18, "color": "#9A9A9A" } },
+      "valueStyle": { "font": { "family": "Poppins", "weight": 600, "size": 16, "lineHeight": 22, "color": "#FFFFFF" } }
+    },
+
+    {
+      "type": "card",
+      "id": "goalWeightChart",
+      "frame": { "x": 24, "yAfter": "outlineCard", "marginTop": 24, "w": 342, "radius": 16, "border": { "w": 1, "color": "#2A2A2A" }, "background": "#121212", "padding": 18 },
+      "children": [
+        { "type": "text", "content": "Goal weight chart", "font": { "family": "Poppins", "weight": 600, "size": 18, "lineHeight": 24, "color": "#FFFFFF" } },
+        { "type": "text", "content": "Body weight progression according to plan", "font": { "family": "Poppins", "weight": 400, "size": 14, "lineHeight": 20, "color": "#C8C8C8" }, "marginTop": 4 },
+        {
+          "type": "chart",
+          "style": {
+            "gridColor": "#2A2A2A",
+            "areaFill": "rgba(13,106,99,0.65)",
+            "stroke": { "color": "#149E8F", "width": 2 }
+          },
+          "frame": { "h": 180, "marginTop": 12 }
+        },
+        { "type": "axisXLabels", "labels": ["Jan","Feb","Mar","Apr","May","Jun"], "font": { "family": "Poppins", "weight": 400, "size": 12, "lineHeight": 16, "color": "#9A9A9A" }, "marginTop": 8 },
+        {
+          "type": "stack",
+          "direction": "vertical",
+          "marginTop": 10,
+          "children": [
+            { "type": "row", "gap": 8, "children": [
+              { "type": "icon", "name": "trendDown", "size": 16, "color": "#17D4D4" },
+              { "type": "text", "content": "Trending down by 5.2% in 6 months", "font": { "family": "Poppins", "weight": 500, "size": 15, "lineHeight": 22, "color": "#FFFFFF" } }
+            ]},
+            { "type": "text", "content": "January – June 2024", "font": { "family": "Poppins", "weight": 400, "size": 14, "lineHeight": 20, "color": "#C8C8C8" } }
+          ]
+        }
+      ]
+    },
+
+    { "type": "text", "id": "weeklyHeader", "content": "Weekly plan", "frame": { "x": 24, "yAfter": "goalWeightChart", "marginTop": 24, "w": 342 }, "font": { "family": "Poppins", "weight": 600, "size": 20, "lineHeight": 28, "color": "#FFFFFF" } },
+    {
+      "type": "row",
+      "id": "dayChips",
+      "frame": { "x": 24, "yAfter": "weeklyHeader", "marginTop": 12, "w": 342, "gap": 12 },
+      "children": [
+        { "type": "chip", "title": "Day 1", "subtitle": "Push", "icon": "calendar", "w": "1/3", "h": 64, "radius": 12, "bg": "#121212", "border": "#2A2A2A" },
+        { "type": "chip", "title": "Day 2", "subtitle": "Pull", "icon": "calendar", "w": "1/3", "h": 64, "radius": 12, "bg": "#121212", "border": "#2A2A2A" },
+        { "type": "chip", "title": "Day 3", "subtitle": "Legs", "icon": "calendar", "w": "1/3", "h": 64, "radius": 12, "bg": "#121212", "border": "#2A2A2A" }
+      ]
+    },
+
+    {
+      "type": "card",
+      "id": "day1Card",
+      "frame": { "x": 24, "yAfter": "dayChips", "marginTop": 16, "w": 342, "radius": 16, "border": { "w": 1, "color": "#2A2A2A" }, "background": "#121212", "padding": 18 },
+      "children": [
+        { "type": "text", "content": "Day 1: Push", "font": { "family": "Poppins", "weight": 600, "size": 18, "lineHeight": 24, "color": "#FFFFFF" } },
+        { "type": "text", "content": "Chest, shoulders, and Triceps", "font": { "family": "Poppins", "weight": 400, "size": 14, "lineHeight": 20, "color": "#C8C8C8" }, "marginTop": 6 },
+        {
+          "type": "list",
+          "dividerColor": "#2A2A2A",
+          "marginTop": 12,
+          "items": [
+            { "title": "Bench Press", "meta": "4×8  65 lbs  90s rest" },
+            { "title": "Dumbbell shoulder press", "meta": "4×8  65 lbs  90s rest" },
+            { "title": "Tricep rope pushdown", "meta": "4×8  65 lbs  90s rest" },
+            { "title": "Plank", "meta": "4×8  65 lbs  90s rest" }
+          ],
+          "titleStyle": { "font": { "family": "Poppins", "weight": 600, "size": 16, "lineHeight": 22, "color": "#FFFFFF" } },
+          "metaStyle":  { "font": { "family": "Poppins", "weight": 400, "size": 14, "lineHeight": 20, "color": "#C8C8C8" } }
+        }
+      ]
+    },
+
+    { "type": "button", "id": "primaryCTA", "label": "Get started", "frame": { "x": 24, "yAfter": "day1Card", "marginTop": 24, "w": 342, "h": 56, "radius": 28, "marginBottomSafe": 24 }, "background": "#E5E5E5", "textColor": "#000000" }
   ]
 }
 ```
 
-If you want, I can output **NativeWind**, **Tamagui**, or **Gluestack-UI** JSX from these specs with the progress animation, button states, and a mock permission dialog overlay wired in.
+If you want, I can translate this spec directly into **React Native + NativeWind/Tamagui** components with a mock chart (Recharts/Victory), the animated progress bar, and the chip selection logic.

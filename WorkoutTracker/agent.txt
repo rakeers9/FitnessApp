@@ -1,0 +1,2025 @@
+# AI Fitness Coach Agent - Complete Implementation Plan
+
+## Table of Contents
+1. [System Architecture Overview](#system-architecture-overview)
+2. [Database Schema Design](#database-schema-design)
+3. [Agent Architecture](#agent-architecture)
+4. [Health Integration System](#health-integration-system)
+5. [Personality System](#personality-system)
+6. [API Design](#api-design)
+7. [Agent Implementation Strategy](#agent-implementation-strategy)
+8. [Frontend Integration Requirements](#frontend-integration-requirements)
+9. [Infrastructure & Deployment](#infrastructure--deployment)
+10. [Testing Strategy](#testing-strategy)
+11. [Implementation Roadmap](#implementation-roadmap)
+
+---
+
+## 1. System Architecture Overview
+
+### 1.1 High-Level Architecture
+
+**Core Components:**
+
+1. **Mobile App (React Native)**
+   - Workout tracking interface
+   - Trainer chat (AI conversation)
+   - Profile and settings management
+   - Offline-first workout plan display
+
+2. **Supabase Backend**
+   - PostgreSQL database with RLS (Row Level Security)
+   - Authentication and user management
+   - Edge Functions (Deno runtime) for serverless operations
+   - Real-time subscriptions for chat
+   - Storage for user uploads
+
+3. **Agent System (Python + LangGraph)**
+   - Orchestrator for routing requests
+   - Three specialist agents (Coach, Plan Manager, Readiness)
+   - Tool execution layer
+   - Personality injection system
+   - Deployed as separate service (Railway/Render/Fly.io)
+
+4. **LLM Provider**
+   - Anthropic Claude 3.5 Sonnet (primary)
+   - OpenAI GPT-4o (fallback)
+   - All agent reasoning flows through LLM
+
+5. **External Health Providers**
+   - Apple Health (HealthKit - iOS only)
+   - Oura Ring API
+   - Whoop API
+   - Garmin Connect API
+   - Fitbit API
+
+### 1.2 Data Flow
+
+**User Message Flow:**
+1. User sends message in mobile app
+2. Message hits Supabase Edge Function
+3. Edge Function calls Python Agent Service
+4. Agent Service loads context from Supabase
+5. Orchestrator classifies intent and routes to specialist agent
+6. Specialist agent uses LLM with personality-injected prompt
+7. Agent may call tools (database queries, calculations)
+8. Response returns through Edge Function to mobile app
+9. App displays response with appropriate UI (approval buttons, etc.)
+
+**Health Data Sync Flow:**
+1. Cron job triggers hourly sync Edge Function
+2. For each connected device, fetch latest data via OAuth APIs
+3. Normalize data to unified schema
+4. Resolve conflicts (multiple devices reporting same metric)
+5. Store in health_metrics table
+6. If readiness significantly changed, trigger morning briefing check
+7. If adjustment needed, create proposed adjustment
+8. Send push notification to user
+
+**Morning Briefing Flow:**
+1. Cron job triggers at user's preferred time (default 7am local time)
+2. Readiness Agent calculates current readiness from health data
+3. Retrieves today's planned workout
+4. Determines if adjustment needed
+5. If yes, creates proposed adjustment in database
+6. Sends push notification with readiness score and adjustment proposal
+7. User opens app, sees briefing with approve/reject buttons
+8. User action updates adjustment status and modifies workout if approved
+
+---
+
+## 2. Database Schema Design
+
+### 2.1 Core Tables Structure
+
+**Users & Preferences Tables:**
+
+**users**
+- Basic user info (id, email, name, age)
+- Onboarding completion status
+- Created timestamp
+
+**user_preferences**
+- Persona selection (calm, motivational, gentle, concise)
+- Avatar URL and accent color (different per persona)
+- Goal type (muscle gain, fat loss, strength, endurance, etc.)
+- Physical stats (weight, height, target weight)
+- Training context (main focus, inspiration, challenges)
+- Experience level and training style
+- Injuries array (JSON with body part, description, severity)
+- Equipment availability
+- Schedule preferences (days per week, duration, preferred times)
+- Privacy consents
+
+**Training Plan Tables:**
+
+**training_plans**
+- User reference
+- Plan metadata (name, description, dates, total weeks)
+- Goal type
+- Status (active, completed, paused, archived)
+- Created by (onboarding, agent, user request)
+- **weeks** field: JSONB array containing complete plan structure
+  - Each week has workouts
+  - Each workout has exercises
+  - Each exercise has sets, reps, intensity, rest, notes
+- This is the PERSISTENT default plan used offline
+
+**daily_adjustments**
+- Plan reference
+- Date (which day this applies to)
+- Adjustment type (intensity reduction/increase, volume change, exercise swap, rest day, reorder)
+- Status (proposed, accepted, rejected, expired)
+- Original workout data (snapshot)
+- Modified workout data (proposed changes)
+- Reasoning from AI
+- Agent ID that proposed it
+- Ephemeral flag (if true, only applies to this day, doesn't change default plan)
+- User response and timestamp
+- Expires at timestamp
+
+**plan_modifications**
+- Permanent changes to the default plan
+- Modification type (exercise replacement, volume adjustment, frequency change, goal pivot)
+- Scope (which weeks/exercises affected)
+- Before/after data
+- Rationale
+- Applied by (user or agent with approval)
+
+**Workout History Tables:**
+
+**workout_sessions**
+- User and plan references
+- Date
+- Planned vs actual workout (JSONB)
+- Completion status
+- Total metrics (duration, volume, RPE)
+- User notes and mood pre/post workout
+- Location and equipment used
+
+**exercise_sets**
+- Session reference
+- Exercise name and ID
+- Set number
+- Performance metrics (weight, reps, distance, duration)
+- Execution quality (RPE, form rating, tempo)
+
+**Health Metrics Tables:**
+
+**health_metrics**
+- User reference
+- Date and source (apple_health, oura, whoop, garmin, fitbit, manual)
+- Sleep metrics (duration, quality score, deep/REM/light minutes, efficiency)
+- Recovery metrics (HRV, resting heart rate, recovery score)
+- Activity metrics (steps, calories, active minutes)
+- Strain/load metrics
+- Other vitals (temperature, respiratory rate, SpO2)
+- Readiness score (from device)
+- Raw data (JSONB for provider-specific fields)
+- Data quality confidence score
+
+**device_connections**
+- User reference
+- Provider
+- OAuth tokens (encrypted)
+- Token expiration
+- Scopes granted
+- Device model and firmware
+- Sync status and frequency
+- Last sync timestamp and error
+- Webhook ID and status
+
+**readiness_scores**
+- User reference
+- Date
+- Component scores (sleep, recovery, strain balance, contextual)
+- Overall readiness score (0-100)
+- Recommendations (intensity multiplier, volume multiplier, should deload)
+- Calculation version
+
+**Conversation Tables:**
+
+**conversations**
+- User reference
+- Title (auto-generated summary)
+- Start and last message timestamps
+
+**messages**
+- Conversation reference
+- Role (user, agent, system)
+- Content
+- Agent ID if agent message
+- Tool calls made (JSONB)
+- References to adjustments or workouts
+
+**Exercise Library:**
+
+**exercises**
+- Name (unique)
+- Category (chest, back, shoulders, arms, legs, core, cardio)
+- Movement pattern (push, pull, squat, hinge, lunge, etc.)
+- Description and instructions array
+- Video URL
+- Equipment required array
+- Difficulty level
+- Primary and secondary muscles
+- Variations (IDs of related exercises)
+- Compound/unilateral flags
+
+**Monitoring Tables:**
+
+**agent_logs**
+- User reference
+- Agent ID
+- Action type (plan generated, adjustment proposed, message sent, tool called, error)
+- Input/output data (JSONB)
+- Performance metrics (duration, token usage)
+- Error details if failed
+
+### 2.2 Key Schema Decisions
+
+**Why JSONB for plan structure:**
+- Flexibility for different training styles
+- Easy to modify individual exercises without schema changes
+- Can store complex nested data (supersets, dropsets, etc.)
+- PostgreSQL JSONB is performant and queryable
+
+**Why separate daily_adjustments from plan_modifications:**
+- Adjustments are ephemeral (today only)
+- Modifications are permanent (change the default plan)
+- User might reject adjustment but still want it proposed tomorrow
+- Clear audit trail of temporary vs permanent changes
+
+**Why store both planned and actual workouts:**
+- Compare intent vs execution
+- Track adherence patterns
+- Identify exercises user consistently skips or struggles with
+- Feed into AI's understanding of user behavior
+
+**Why unified health_metrics table:**
+- Single source of truth after conflict resolution
+- Easy to query across providers
+- Consistent structure for AI to analyze
+- Raw data preserved for debugging
+
+---
+
+## 3. Agent Architecture
+
+### 3.1 Agent System Design Philosophy
+
+**Core Principle: Specialist Agents with Clear Boundaries**
+
+Instead of one monolithic AI that tries to do everything, we use specialized agents that are experts in their domain. This provides:
+- Better prompt engineering (focused instructions)
+- Easier debugging (know which agent failed)
+- Clearer responsibilities
+- More consistent responses
+
+**Architecture Pattern: Orchestrator + Specialists**
+
+Think of it like a hospital:
+- Orchestrator = Triage nurse (determines what you need)
+- Coach Agent = Physical therapist (technique, education, motivation)
+- Plan Manager = Surgeon (makes structural changes to your plan)
+- Readiness Agent = Diagnostician (assesses your state, prescribes adjustments)
+
+### 3.2 Orchestrator Agent
+
+**Purpose:** Router that analyzes intent and delegates to specialists
+
+**Responsibilities:**
+- Receive every user message first
+- Load necessary context (user preferences, current plan, readiness)
+- Classify user intent
+- Route to appropriate specialist
+- Handle errors and fallbacks
+
+**Intent Categories:**
+- **coaching** → Routes to Coach Agent
+  - Examples: "How do I improve my bench press?", "I'm feeling unmotivated"
+- **plan_modification** → Routes to Plan Manager
+  - Examples: "Change my leg day", "Replace squats with leg press"
+- **readiness_check** → Routes to Readiness Agent
+  - Examples: "Should I work out today?", "I'm exhausted"
+- **education** → Routes to Coach Agent
+  - Examples: "What is progressive overload?", "Explain periodization"
+- **tracking** → Routes to Coach Agent
+  - Examples: "Show my progress", "How am I doing?"
+
+**How it decides:**
+Uses LLM with a classification prompt that includes:
+- The user's message
+- Current context (plan name, today's workout, recent readiness)
+- List of possible intents with descriptions
+- Returns single intent name
+
+**Context Loading:**
+Before routing, loads:
+- User preferences (persona, goals, injuries, equipment)
+- Active training plan
+- Recent readiness score
+- Last few messages for continuity
+
+### 3.3 Coach Agent
+
+**Purpose:** General coaching, motivation, education, technique guidance
+
+**Responsibilities:**
+- Answer form and technique questions
+- Provide motivational support
+- Explain training concepts and principles
+- Celebrate progress and milestones
+- Give feedback on workout history
+- NOT responsible for changing plans
+
+**Tools Available:**
+- **search_exercise_library**: Find exercises by name, muscle group, equipment
+- **get_user_progress**: Retrieve progress on specific metric over time
+- **get_workout_history**: Fetch recent workout sessions
+
+**Typical Interactions:**
+- User: "My bench press form feels off"
+  - Agent searches exercise library for bench press technique
+  - Provides detailed form cues
+  - May suggest related exercises or mobility work
+
+- User: "I haven't been consistent lately"
+  - Agent reviews workout history
+  - Acknowledges struggle with empathy (personality-dependent)
+  - Suggests strategies to rebuild consistency
+
+- User: "Am I making progress?"
+  - Agent retrieves progress metrics
+  - Analyzes trends
+  - Celebrates wins and identifies areas for growth
+
+**Key Constraint:** 
+Cannot modify plans. If user asks for plan change, Coach Agent explains they'll need to talk to the Plan Manager, then the Orchestrator re-routes.
+
+### 3.4 Plan Manager Agent
+
+**Purpose:** Creates and modifies training plans
+
+**Responsibilities:**
+- Generate initial plan during onboarding
+- Swap exercises when requested or needed (injury, preference)
+- Adjust volume or frequency
+- Handle goal changes (hypertrophy → strength)
+- Ensure plan coherence (balanced, progressive, safe)
+- ALWAYS validate changes against user goals
+
+**Tools Available:**
+- **generate_training_plan**: Create new plan from preferences
+- **swap_exercise**: Replace one exercise with another
+- **adjust_volume**: Increase/decrease sets for muscle group or exercise
+- **validate_plan_coherence**: Check for logical issues
+- **get_exercise_alternatives**: Find substitutes given constraints
+
+**Critical Validation Rules:**
+Every plan change must pass these checks:
+1. **Volume limits**: Not excessive (>100 sets/week is red flag)
+2. **Muscle balance**: Push/pull ratio reasonable (within 1.5x)
+3. **Rest days**: At least 1-2 per week
+4. **Injury conflicts**: No exercises that aggravate listed injuries
+5. **Equipment available**: Only uses user's equipment
+6. **Goal alignment**: Change supports long-term goals
+
+**Typical Interactions:**
+- User: "Replace deadlifts with something easier on my back"
+  - Agent searches alternatives (RDLs, hip thrusts, back extensions)
+  - Proposes swap with reasoning
+  - Shows impact on weekly volume
+  - Asks for approval
+
+- User: "I want to focus more on arms"
+  - Agent calculates current arm volume
+  - Proposes adding sets or exercises
+  - Ensures doesn't compromise main goal (if muscle gain overall)
+  - Shows before/after weekly split
+
+- User: "Change from 4 to 5 days per week"
+  - Agent recalculates workout split
+  - Redistributes volume across 5 days
+  - Ensures adequate recovery between sessions
+  - Proposes new schedule
+
+**Approval Flow:**
+Plan Manager NEVER auto-applies changes. Always:
+1. Proposes change with clear before/after
+2. Explains reasoning
+3. Shows impact on goals
+4. Waits for user approval
+5. Only commits to database after approval
+
+### 3.5 Voice Agent
+
+**Purpose:** Natural voice conversations for hands-free coaching
+
+**Responsibilities:**
+- Process voice input during workouts
+- Provide real-time audio feedback
+- Answer questions hands-free
+- Count reps and provide form cues
+- Motivational support during exercises
+- Emergency stop capability
+
+**Architecture:**
+- **Voice Input:** OpenAI Whisper API for speech-to-text
+- **Processing:** Routes through same Orchestrator as text
+- **Voice Output:** OpenAI TTS (Text-to-Speech) API
+- **Latency:** Sub-2 second response time target
+
+**Voice Interaction Flow:**
+1. User activates voice mode (button or "Hey Coach")
+2. Audio streams to Whisper API
+3. Transcribed text routes through Orchestrator
+4. Specialist agent generates response
+5. Response converted to speech via TTS
+6. Audio plays with personality-matched voice
+
+**Voice Personas:**
+- **Calm:** Soothing, measured pace, lower pitch
+- **Motivational:** Energetic, faster pace, dynamic range
+- **Gentle:** Warm, encouraging, moderate pace
+- **Concise:** Direct, clear, minimal words
+
+**Key Features:**
+- **Workout Mode:** Hands-free during exercises
+  - "How many more reps?" → "Three more, keep your form tight"
+  - "Check my form" → "Remember to keep your back straight"
+- **Rep Counting:** Audio counting with encouragement
+  - Counts along with user's pace
+  - Provides form reminders between counts
+- **Emergency Commands:**
+  - "Stop" → Immediately pauses workout
+  - "Help" → Provides quick guidance
+  - "Skip exercise" → Moves to next exercise
+
+**Technical Implementation:**
+- WebSocket connection for real-time audio streaming
+- Voice Activity Detection (VAD) for automatic recording
+- Noise cancellation for gym environments
+- Offline fallback with pre-recorded common responses
+
+**Tools Available:**
+- All tools from text agents (same backend)
+- **audio_feedback**: Generate contextual audio cues
+- **rep_counter**: Track and announce rep counts
+- **form_analyzer**: Provide form corrections (future: with camera)
+
+### 3.6 Readiness & Adjustment Agent
+
+**Purpose:** Daily health assessment and workout modifications
+
+**Responsibilities:**
+- Morning briefing (automated daily)
+- Calculate readiness score from health data
+- Propose workout adjustments based on readiness
+- Balance recovery needs with training goals
+- Explain which metrics led to recommendations
+
+**Tools Available:**
+- **calculate_readiness_score**: Compute composite readiness from health data
+- **get_health_metrics**: Retrieve wearable data for date range
+- **propose_adjustment**: Generate modification to today's workout
+- **calculate_goal_impact**: Show effect on weekly/monthly goals
+
+**Readiness Score Calculation:**
+
+**Components (0-100 each):**
+1. **Sleep Score (35% weight)**
+   - Duration vs optimal (7-9 hours)
+   - Quality score from device
+   - Sleep stages (deep/REM sufficient)
+
+2. **Recovery Score (30% weight)**
+   - HRV vs baseline (higher is better)
+   - Resting heart rate vs baseline (lower is better)
+   - Device recovery score
+
+3. **Strain Balance (20% weight)**
+   - Recent training load vs capacity
+   - Checks for overtraining (volume >30% above baseline)
+   - Days since last rest day
+
+4. **Contextual Score (15% weight)**
+   - Device-provided readiness (Oura, Whoop)
+   - Other factors (stress, illness indicators)
+
+**Overall Readiness** = Weighted average of components
+
+**Readiness to Action Mapping:**
+- **85-100**: Fully ready, no changes needed
+- **70-84**: Ready with slight caution, minor intensity reduction (10-15%)
+- **55-69**: Moderate reduction needed (intensity 75%, volume 85%)
+- **40-54**: Significant reduction (intensity 60%, volume 70%)
+- **<40**: Rest day strongly advised
+
+**Morning Briefing Flow:**
+1. Triggered at user's wake time (default 7am, configurable)
+2. Calculate readiness score from last night's data
+3. Get today's planned workout from active plan
+4. Determine if adjustment needed based on score
+5. If needed, generate adjustment proposal
+6. Consider weekly goals - can volume be redistributed to other days?
+7. Create proposed adjustment in database (status: proposed)
+8. Send push notification with readiness + proposal
+9. User opens app, sees:
+   - Readiness breakdown (sleep, recovery, strain, contextual)
+   - Today's original workout
+   - Proposed adjustment with reasoning
+   - Approve/Reject/Modify buttons
+
+**Adjustment Proposal Logic:**
+
+**Decision Tree:**
+- If readiness ≥ 85: No adjustment
+- If readiness 70-84: Minor intensity reduction
+  - Reduce weights by 10-15%
+  - Add 30 seconds rest between sets
+  - Keep volume same
+- If readiness 55-69: Moderate reduction
+  - Check if remaining days this week can absorb volume
+  - If yes: Reduce sets by 1, intensity by 15%, redistribute volume
+  - If no: Reduce sets by 1, intensity by 20%, accept volume loss
+- If readiness 40-54: Significant reduction
+  - Cut sets in half
+  - Reduce intensity by 30%
+  - Or offer to swap to active recovery (light cardio, stretching)
+- If readiness <40: Rest day
+  - Skip workout entirely
+  - Suggest light activity (walk, stretching)
+  - Reschedule workout if possible
+
+**Goal Impact Communication:**
+Always explain how adjustment affects long-term goals:
+- "This reduces today's volume by 15%, but we'll add it to Friday's session. Weekly total unchanged."
+- "Skipping today means 10% less volume this week, but preventing injury is worth it. We'll make it up next week."
+- "This lighter session still moves you toward your goal, just at a safer pace."
+
+**Key Principle: Goal Alignment**
+Readiness Agent NEVER makes isolated decisions. Every adjustment considers:
+- Weekly volume targets
+- Monthly progression plan
+- Long-term goal (12-week muscle gain, marathon prep, etc.)
+- Where user is in current phase (foundation, build, peak)
+
+---
+
+## 4. Health Integration System
+
+### 4.1 Integration Strategy
+
+**Goal:** Unified health data from multiple wearable sources
+
+**Challenge:** Each provider has different APIs, data formats, and authorization flows
+
+**Solution:** Normalize everything to a unified schema in health_metrics table
+
+### 4.2 Provider Details
+
+**Apple Health (HealthKit)**
+- **Platform:** iOS only
+- **Auth:** On-device permissions, no OAuth
+- **Implementation:** React Native bridge to HealthKit framework
+- **Sync:** On-device, user-initiated or background fetch
+- **Key Data:**
+  - Sleep analysis (in bed, asleep, awake times)
+  - Heart rate variability (HRV) samples
+  - Resting heart rate
+  - Steps and active energy
+  - Workout sessions
+- **Notes:** Acts as aggregator - can pull from other apps/devices on iPhone
+
+**Oura Ring**
+- **Auth:** OAuth 2.0
+- **API:** REST API v2
+- **Sync:** Server-side scheduled
+- **Key Endpoints:**
+  - /daily_sleep - Sleep stages, efficiency, quality score
+  - /daily_readiness - Readiness score, HRV, temperature
+  - /daily_activity - Steps, calories, activity score
+- **Strengths:** Excellent sleep tracking, specialized for recovery
+- **Update Frequency:** Data available next morning after sync
+
+**Whoop**
+- **Auth:** OAuth 2.0
+- **API:** REST API v1
+- **Sync:** Server-side scheduled
+- **Key Endpoints:**
+  - /recovery - Recovery score, HRV, resting HR
+  - /sleep - Sleep performance, stages
+  - /strain - Daily strain score (0-21 scale)
+  - /workout - Exercise details
+- **Strengths:** Best-in-class strain tracking, athlete-focused
+- **Update Frequency:** Real-time via webhooks available
+
+**Garmin**
+- **Auth:** OAuth 1.0a (older, more complex)
+- **API:** Wellness API
+- **Sync:** Server-side scheduled + push notifications
+- **Key Data:**
+  - Daily summaries (sleep, steps, calories)
+  - Epochs (detailed HR, stress, respiration every 15min)
+  - Sleep stages
+  - Body battery (Garmin's readiness score)
+  - Training status
+- **Strengths:** Comprehensive, huge device ecosystem
+- **Challenge:** OAuth 1.0a is trickier to implement
+
+**Fitbit**
+- **Auth:** OAuth 2.0
+- **API:** Web API
+- **Sync:** Server-side scheduled + webhooks
+- **Key Endpoints:**
+  - /sleep - Sleep stages, efficiency
+  - /hrv - Heart rate variability
+  - /activities - Steps, active minutes, calories
+- **Strengths:** Popular, good activity tracking
+- **Update Frequency:** Daily sync, intraday webhooks available
+
+### 4.3 Unified Data Model
+
+**Normalization Strategy:**
+
+All provider data gets transformed into common fields:
+- Sleep: hours, quality score (0-100), minutes per stage
+- Recovery: HRV (ms), RHR (bpm), recovery score (0-100)
+- Activity: steps, calories (active/total), active minutes
+- Strain: daily strain/load score (normalized to 0-100)
+- Vitals: temperature, respiratory rate, SpO2
+
+**Raw Data Preservation:**
+- Store provider-specific data in JSONB `raw_data` field
+- Allows future extraction of fields we don't currently use
+- Helps debugging discrepancies
+
+### 4.4 Conflict Resolution System
+
+**Problem:** User wears Oura ring + Whoop strap, both report sleep data. Which to use?
+
+**Solution: Priority Hierarchy + Conservative Approach**
+
+**Priority by Metric Type:**
+- **Sleep:** Oura > Whoop > Garmin > Apple Health > Fitbit
+  - Oura specializes in sleep
+- **Recovery:** Whoop > Oura > Garmin > Apple Health > Fitbit
+  - Whoop specializes in recovery/strain
+- **Activity:** Garmin > Apple Health > Fitbit > Whoop > Oura
+  - Garmin has comprehensive activity tracking
+
+**Conservative Approach for Safety:**
+- **Sleep/Recovery:** Use LOWEST value when multiple sources disagree
+  - Better to underestimate recovery than overestimate
+  - Example: Oura says 7.5hrs sleep, Whoop says 6hrs → Use 6hrs
+- **Strain/Activity:** Use HIGHEST value
+  - Better to account for all activity
+  - Example: Garmin tracked gym workout, Apple Health tracked steps → Sum them
+
+**Special Case: Apple Health as Aggregator**
+- Apple Health can import from Oura, Whoop, Garmin
+- May have duplicates
+- Solution: If Apple Health source includes data from connected device, prefer the direct device API
+
+### 4.5 Sync Architecture
+
+**Scheduled Sync (Every Hour):**
+- Supabase cron job triggers Edge Function
+- Edge Function loops through all active device connections
+- For each connection:
+  - Check token expiration, refresh if needed
+  - Call provider API for last 7 days (backfill any gaps)
+  - Normalize data
+  - Store in health_metrics table
+  - Update last_sync_at timestamp
+- If sync fails:
+  - Log error in device_connections
+  - Update sync_status to 'error'
+  - Don't break loop, continue with other devices
+
+**Webhook Sync (Real-time):**
+- Some providers (Whoop, Oura, Garmin, Fitbit) support webhooks
+- When provider has new data, they POST to our webhook endpoint
+- Edge Function receives webhook:
+  - Validates signature
+  - Identifies user from webhook payload
+  - Triggers immediate sync for that user
+  - Returns 200 OK quickly (provider expects fast response)
+
+**On-Demand Sync:**
+- User can manually trigger sync from app
+- Useful after connecting new device
+- Button in settings: "Sync Health Data Now"
+
+**Sync Frequency Recommendations:**
+- Scheduled: Every 60 minutes (balance freshness vs API rate limits)
+- Webhooks: Real-time when available
+- Morning briefing: Always syncs immediately before calculating readiness
+
+### 4.6 OAuth Implementation Strategy
+
+**OAuth 2.0 Flow (Oura, Whoop, Fitbit):**
+1. User taps "Connect [Provider]" in app settings
+2. App opens browser to provider's authorization URL with:
+   - client_id
+   - redirect_uri (points to Supabase Edge Function)
+   - scope (requested permissions)
+   - state (user_id for security)
+3. User authorizes in provider's interface
+4. Provider redirects to our callback URL with authorization code
+5. Edge Function:
+   - Validates state matches user_id
+   - Exchanges code for access_token + refresh_token
+   - Stores tokens (encrypted) in device_connections table
+   - Redirects back to app with success message
+6. App shows "Connected" status
+7. Immediately trigger initial sync
+
+**OAuth 1.0a Flow (Garmin):**
+- More complex, requires signing requests
+- Use OAuth 1.0a library
+- Three-legged flow:
+  1. Request token
+  2. User authorization
+  3. Exchange for access token
+- Similar storage and sync process after connected
+
+**Token Management:**
+- Access tokens expire (typically 1-8 hours)
+- Refresh tokens used to get new access tokens
+- Before each API call, check expiration
+- If expired, use refresh token to get new access token
+- If refresh fails, set connection status to 'disconnected', notify user to re-authorize
+
+### 4.7 Implementation Priority
+
+**Phase 1 (MVP):**
+- Apple Health (easiest, no server OAuth)
+- Oura (clean API, great for sleep/recovery)
+
+**Phase 2:**
+- Whoop (similar to Oura, excellent data)
+
+**Phase 3:**
+- Garmin (OAuth 1.0a is annoying but doable)
+- Fitbit (after others proven)
+
+**Rationale:** Start with highest quality data sources (Oura/Whoop) for readiness calculations. Apple Health gives immediate iOS user value.
+
+---
+
+## 5. Personality System
+
+### 5.1 Core Personas
+
+**Persona Definitions:**
+
+**1. Calm (Zen Coach)**
+- **Tone:** Measured, patient, mindful, never exclamatory
+- **Vocabulary:** "Let's", "Consider", "Notice", "Observe", "Gently", "Breathe", "Flow"
+- **Avoid:** "Pumped!", "Crush it!", "Beast mode", "No pain no gain", "Push through"
+- **Emoji Usage:** Minimal, peaceful (🧘‍♂️ 🌊 ☮️ 🍃)
+- **Response Length:** Medium to long, thoughtful
+- **Motivation Style:** Intrinsic, mindfulness-based, process-oriented
+- **Sentence Structure:** Longer, flowing sentences with pauses
+- **UI:** Soft blue-gray accent color (#7C9FB0)
+- **Example:** "Notice how your body responds to this movement. Let's honor your recovery needs today. This is a practice, not a performance."
+
+**2. Motivational (Hype Coach)**
+- **Tone:** Energetic, enthusiastic, pump-up, competitive
+- **Vocabulary:** "Crush", "Destroy", "Beast", "Champion", "Dominate", "Warrior", "Victory"
+- **Avoid:** "Maybe", "Perhaps", "Consider", "If you want", "Gently"
+- **Emoji Usage:** Frequent, high-energy (💪 🔥 ⚡ 💥 🏆)
+- **Response Length:** Short to medium, punchy
+- **Motivation Style:** Extrinsic, competitive, intensity-driven
+- **Sentence Structure:** Short, impactful, exclamatory
+- **UI:** Fiery orange-red accent color (#FF4500)
+- **Example:** "Time to DOMINATE this workout! You're a machine! Champions are built in moments like this! 💪🔥"
+
+**3. Gentle (Supportive Coach)**
+- **Tone:** Warm, encouraging, compassionate, nurturing
+- **Vocabulary:** "Proud of you", "You've got this", "At your own pace", "Small wins", "Be kind to yourself"
+- **Avoid:** "Push harder", "No excuses", "Toughen up", "Weak", "Lazy"
+- **Emoji Usage:** Warm, supportive (❤️ 🌟 ✨ 🤗 🌈)
+- **Response Length:** Medium, reassuring
+- **Motivation Style:** Self-compassion, progress over perfection, celebrate small wins
+- **Sentence Structure:** Supportive, uses "we" often, validating
+- **UI:** Light pink accent color (#FFB6C1)
+- **Example:** "I'm proud of you for showing up today ❤️. Every step forward counts. It's okay to rest when you need to."
+
+**4. Concise (Tactical Coach)**
+- **Tone:** Direct, efficient, no-nonsense, factual
+- **Vocabulary:** "Do", "Complete", "Execute", "Results", "Data", "Metrics", "Target"
+- **Avoid:** "Let me explain in detail", "Here's a story", "Feel into", "Journey"
+- **Emoji Usage:** None or rare task-focused (✓ → • ▸)
+- **Response Length:** Short, bullet points preferred
+- **Motivation Style:** Results-driven, data-focused, action-oriented
+- **Sentence Structure:** Short, direct, often fragments
+- **UI:** Charcoal gray accent color (#36454F)
+- **Example:** "Readiness: 72/100. Reduce intensity 15%. Target: 4x8. Execute. ✓"
+
+### 5.2 Personality Injection Method: System Prompt Enhancement
+
+**Strategy:** Build personality into the system prompt given to each agent
+
+**System Prompt Structure:**
+1. **Base Introduction** - Who the agent is, what app they're in
+2. **Personality Block (Critical Section):**
+   - Explicit instructions on tone
+   - Vocabulary to use
+   - Phrases to avoid
+   - Response length guidelines
+   - Motivation approach
+   - Emoji usage rules
+3. **Role-Specific Instructions** - Agent's responsibilities and tools
+4. **General Guidelines** - Safety, accuracy, user respect
+
+**Why This Works:**
+- LLMs are highly responsive to explicit style instructions
+- Consistent personality across all agent interactions
+- Easy to test (change persona, see immediate style shift)
+- No post-processing needed (gets it right first time)
+
+**Personality Block Example Structure:**
+
+```
+CRITICAL - PERSONALITY & COMMUNICATION STYLE:
+You must embody the "[persona name]" personality in EVERY interaction.
+
+Tone: [specific tone description]
+
+Language Guidelines:
+- USE these words: [vocabulary list]
+- NEVER use these phrases: [avoid list]
+- Response length: [guideline]
+- Motivation approach: [style]
+- Emoji usage: [rules]
+
+Address the user as: [user's first name]
+
+Your personality should be immediately recognizable and consistent.
+```
+
+### 5.3 Persona Selection and UI Sync
+
+**Onboarding (Step 1):**
+- User sees 4 coach cards with descriptions
+- Each shows avatar, name, tagline
+- User taps to select
+- Selection saves to user_preferences.persona
+- Also saves accent_color and avatar_url
+
+**Avatar Changes:**
+- Different coach avatar image per persona
+- Displayed next to all agent messages in chat
+- Shown on morning briefing screen
+- Creates visual consistency
+
+**Accent Color Changes:**
+- Applied app-wide as primary color
+- Chat bubbles from agent
+- Button highlights
+- Progress bars
+- Navigation highlights
+- Creates cohesive branded experience per persona
+
+**In Chat Interface:**
+- User's messages: Right-aligned, neutral color
+- Agent's messages: Left-aligned, persona's accent color
+- Agent's avatar: Displayed with each message
+- Creates clear visual distinction
+
+### 5.4 Consistency Across Agents
+
+**Challenge:** All three specialist agents must maintain the same personality
+
+**Solution:** Every agent gets the same personality block in their system prompt
+
+**Orchestrator:** Neutral (just routing, doesn't respond to user)
+**Coach Agent:** Full personality (most user-facing)
+**Plan Manager:** Full personality (user approval interactions)
+**Readiness Agent:** Full personality (morning briefings, adjustments)
+
+**Result:** Whether user is asking about form (Coach), changing plan (Plan Manager), or reviewing readiness (Readiness), the personality is consistent.
+
+### 5.5 Personality Validation (Optional Quality Check)
+
+**Post-Generation Validation:**
+
+After agent generates response, optionally run validation check:
+- Search for banned phrases (e.g., "crush it" in calm persona)
+- Count exclamation marks (should be low for calm/gentle)
+- Count emojis (should be zero for concise)
+- Check word count (concise should be <100 words)
+
+**If Issues Found:**
+- Log for monitoring
+- If severity is high (banned phrase), regenerate with stronger instructions
+- Track failure rate to improve prompts
+
+**When to Use:**
+- During development: Always validate to tune prompts
+- In production: Optional, adds latency
+- Alternative: Monitor user feedback, iterate on prompts based on complaints
+
+---
+
+## 6. API Design
+
+### 6.1 API Architecture
+
+**Pattern:** Supabase Edge Functions as API gateway, calling Python Agent Service
+
+**Why This Architecture:**
+- Edge Functions handle auth (Supabase RLS)
+- Edge Functions are geographically distributed (low latency)
+- Python Agent Service can be stateless (easy to scale)
+- Clear separation of concerns
+
+### 6.2 Core Endpoints
+
+**POST /functions/v1/agent-chat**
+- **Purpose:** Main conversational interface
+- **Input:**
+  - message (string)
+  - conversation_id (optional, creates new if missing)
+- **Process:**
+  - Validates user auth
+  - Gets or creates conversation
+  - Saves user message to messages table
+  - Calls Python Agent Service with user_id and message
+  - Agent Service returns response
+  - Saves agent response to messages table
+  - Returns response to client
+- **Output:**
+  - response (string)
+  - agent_id (which agent handled it)
+  - conversation_id
+  - references (optional: adjustment_id, workout_id)
+  - actions (optional: array of UI actions like "approve_adjustment")
+
+**GET /functions/v1/daily-briefing**
+- **Purpose:** Morning readiness briefing
+- **Input:** None (uses auth to identify user)
+- **Process:**
+  - Calls Python Agent Service for readiness calculation
+  - Gets today's planned workout from active plan
+  - Checks for pending adjustments
+  - Generates personalized message based on persona
+- **Output:**
+  - readiness_score (0-100)
+  - components (sleep, recovery, strain_balance, contextual)
+  - today_workout (the planned workout)
+  - adjustment (if proposed)
+  - message (personalized briefing text)
+
+**POST /functions/v1/approve-adjustment**
+- **Purpose:** User approves proposed adjustment
+- **Input:**
+  - adjustment_id
+  - action ("approve", "reject", "modify")
+  - modifications (optional: if user wants to tweak)
+  - user_comment (optional)
+- **Process:**
+  - Validates adjustment belongs to user
+  - If approve: Apply adjustment to today's workout
+  - If reject: Mark as rejected
+  - If modify: Apply user's modifications
+  - Update adjustment status
+- **Output:**
+  - success (boolean)
+  - message (confirmation text)
+
+**POST /functions/v1/generate-plan**
+- **Purpose:** Create initial training plan (onboarding)
+- **Input:**
+  - All onboarding data (goals, preferences, experience, etc.)
+- **Process:**
+  - Calls Python Agent Service Plan Manager
+  - Agent generates complete plan structure
+  - Saves to training_plans table
+  - Sets as active plan
+- **Output:**
+  - plan_id
+  - plan (complete JSON structure)
+
+**GET /functions/v1/readiness-score**
+- **Purpose:** Get current readiness on demand
+- **Input:** Optional date (defaults to today)
+- **Process:**
+  - Calls Python Agent Service
+  - Calculates or retrieves cached readiness
+- **Output:**
+  - Same as readiness in daily briefing
+
+**POST /functions/v1/connect-device**
+- **Purpose:** Initiate OAuth flow for health provider
+- **Input:**
+  - provider (oura, whoop, garmin, fitbit)
+- **Process:**
+  - Generates OAuth URL with state (user_id)
+  - Returns URL for app to open in browser
+- **Output:**
+  - authorization_url
+
+**GET /functions/v1/[provider]-callback**
+- **Purpose:** OAuth callback handler
+- **Input:**
+  - code (authorization code from provider)
+  - state (user_id)
+- **Process:**
+  - Validates state
+  - Exchanges code for tokens
+  - Saves to device_connections (encrypted)
+  - Triggers initial sync
+  - Redirects to app with success
+- **Output:**
+  - Redirect to app deeplink
+
+**POST /functions/v1/sync-health-data**
+- **Purpose:** Manual health data sync
+- **Input:** Optional provider (syncs all if not specified)
+- **Process:**
+  - Triggers sync for user's connected devices
+  - Returns immediately (sync happens async)
+- **Output:**
+  - sync_started (boolean)
+
+**POST /functions/v1/log-workout**
+- **Purpose:** Save completed workout session
+- **Input:**
+  - date
+  - workout_data (exercises, sets, reps, weights)
+  - completion_status
+  - duration
+  - notes
+- **Process:**
+  - Saves to workout_sessions table
+  - Saves sets to exercise_sets table
+  - Updates plan progress tracking
+- **Output:**
+  - session_id
+
+**GET /functions/v1/workout-history**
+- **Purpose:** Retrieve past workouts
+- **Input:**
+  - days (how far back, default 30)
+  - exercise (optional, filter by exercise name)
+- **Process:**
+  - Queries workout_sessions and exercise_sets
+  - Aggregates data
+- **Output:**
+  - Array of workout sessions with details
+
+**POST /functions/v1/voice-transcribe**
+- **Purpose:** Convert speech to text
+- **Input:**
+  - audio_data (base64 encoded audio)
+  - format (audio format: mp3, wav, m4a)
+- **Process:**
+  - Sends audio to OpenAI Whisper API
+  - Returns transcribed text
+  - Detects language automatically
+- **Output:**
+  - transcription (text)
+  - confidence (float 0-1)
+  - detected_language
+
+**POST /functions/v1/voice-synthesize**
+- **Purpose:** Convert text to speech
+- **Input:**
+  - text (message to speak)
+  - persona (user's selected persona)
+  - voice_settings (optional overrides)
+- **Process:**
+  - Maps persona to voice parameters
+  - Calls OpenAI TTS API
+  - Returns audio stream
+- **Output:**
+  - audio_url (presigned URL)
+  - duration (seconds)
+  - format (audio format)
+
+**WebSocket /functions/v1/voice-stream**
+- **Purpose:** Real-time voice conversation
+- **Connection:**
+  - Authenticate with JWT
+  - Establish WebSocket connection
+- **Messages:**
+  - Client → Server: Audio chunks
+  - Server → Client: Transcription + Response audio
+- **Features:**
+  - Continuous listening mode
+  - Interrupt capability
+  - Low latency streaming
+
+### 6.3 Real-Time Features
+
+**Chat Updates:**
+- Use Supabase real-time subscriptions
+- Subscribe to messages table filtered by conversation_id
+- When new agent message inserted, UI updates automatically
+- Provides "agent is typing" capability
+
+**Adjustment Notifications:**
+- When daily_adjustment created with status 'proposed'
+- Push notification sent via Firebase/APNS
+- App updates UI if open
+- Badge count increments
+
+**Plan Changes:**
+- When training_plans updated
+- App refetches active plan
+- Cached offline plan updates
+
+---
+
+## 7. Agent Implementation Strategy
+
+### 7.1 LangGraph Framework
+
+**Why LangGraph:**
+- Built for multi-agent workflows
+- Native state management
+- Excellent tool calling support
+- Checkpointing (conversation memory)
+- Cyclic flows (user approval loops)
+- Production-ready with LangSmith monitoring
+
+**Graph Structure:**
+
+**Nodes (Processing Steps):**
+1. **load_context** - Fetches user data, plan, readiness
+2. **orchestrator** - Classifies intent
+3. **coach** - Handles coaching queries
+4. **plan_manager** - Handles plan modifications
+5. **readiness** - Handles readiness and adjustments
+
+**Edges (Flow):**
+- **Entry:** load_context
+- **Fixed:** load_context → orchestrator
+- **Conditional:** orchestrator → (coach | plan_manager | readiness) based on intent
+- **Terminal:** All specialist agents → END
+
+**State Object:**
+- Carries all context through the graph
+- User info, messages, context, response
+- Immutable (each node returns updates)
+
+### 7.2 LLM Selection
+
+**Primary: OpenAI GPT-4o**
+- Excellent performance and speed
+- Superior tool calling capabilities
+- Cost-effective at scale
+- Real-time streaming responses
+- Multi-modal capabilities (future: image analysis for form checks)
+
+**Fallback: OpenAI GPT-4o-mini**
+- Extremely fast responses
+- Much cheaper for simple queries
+- Good for intent classification
+- Use for non-critical paths (logging, simple confirmations)
+
+**Configuration:**
+- Temperature: 0.7 (balanced creativity and consistency)
+- Max tokens: 2000 (allow detailed responses)
+- Tool choice: Auto (let model decide when to use tools)
+- Stream: True (for real-time response display)
+
+### 7.3 Tool Implementation Strategy
+
+**Tool Definition:**
+Each tool is a Python function with:
+- Clear name (search_exercise_library)
+- Docstring describing what it does
+- Typed parameters
+- Return type
+- Actual implementation that calls Supabase or does calculation
+
+**Tool Categories:**
+
+**Coach Tools:**
+- search_exercise_library
+- get_user_progress
+- get_workout_history
+
+**Plan Manager Tools:**
+- generate_training_plan
+- swap_exercise
+- adjust_volume
+- validate_plan_coherence
+- get_exercise_alternatives
+
+**Readiness Tools:**
+- calculate_readiness_score
+- get_health_metrics
+- propose_adjustment
+- calculate_goal_impact
+
+**Shared Tools:**
+- get_user_preferences
+- get_active_plan
+
+**Tool Execution:**
+- LangGraph has built-in ToolExecutor
+- Agent calls tool → ToolExecutor runs function → Result returned to agent
+- Agent can call multiple tools in sequence
+- Agent synthesizes tool results into final response
+
+### 7.4 Agent Response Flow
+
+**Detailed Flow for Each Request:**
+
+1. **Request Arrives**
+   - Edge Function receives message
+   - Validates auth, gets user_id
+
+2. **Initialize State**
+   - Create initial AgentState object
+   - Set user_id, message, conversation_id
+
+3. **Load Context Node**
+   - Query user_preferences
+   - Query active training_plans
+   - Query latest readiness_scores
+   - Add to state
+
+4. **Orchestrator Node**
+   - Build classification prompt with context
+   - Call LLM: "What is the user's intent?"
+   - Parse response → intent name
+   - Add intent to state
+
+5. **Route to Specialist**
+   - Graph's conditional edge evaluates intent
+   - Routes to appropriate specialist node
+
+6. **Specialist Node (Example: Coach)**
+   - Build system prompt with personality injection
+   - Build conversation history (last N messages + current)
+   - Bind tools to LLM
+   - Call LLM with full context
+   - If LLM requests tools:
+     - Execute tool calls
+     - Add results to conversation
+     - Call LLM again with tool results
+   - LLM generates final response
+   - Add response, agent_id, tool_calls to state
+
+7. **Return to Edge Function**
+   - Extract response from final state
+   - Save to messages table
+   - Return to client
+
+**Total Latency Target:**
+- Simple response (no tools): 2-3 seconds
+- With tool calls: 4-6 seconds
+- With multiple tools: 6-10 seconds
+
+### 7.5 Error Handling
+
+**Agent Level:**
+- LLM API failure → Retry once, then return graceful error
+- Tool execution failure → Log error, tell user "I couldn't access that data, but here's what I know..."
+- Intent classification failure → Default to Coach Agent (safest)
+
+**Edge Function Level:**
+- Agent Service down → Return cached response or simple fallback
+- Database connection failure → Queue request, notify user
+- Auth failure → Redirect to login
+
+**User Experience:**
+- Never show raw errors
+- Always provide helpful message
+- Offer retry button
+- Log everything for debugging
+
+---
+
+## 8. Frontend Integration Requirements
+
+### 8.1 Key UI Components
+
+**Trainer Chat Interface:**
+- Full-screen chat UI
+- Message history scrollable
+- User messages: Right-aligned, gray
+- Agent messages: Left-aligned, persona's accent color with avatar
+- Input bar at bottom with send button
+- Loading indicator when agent is thinking
+- "Agent is typing..." animation during response generation
+
+**Message Types:**
+- **Text message** - Standard chat bubble
+- **Adjustment proposal** - Special card with approve/reject buttons
+- **Plan modification** - Shows before/after comparison
+- **Progress chart** - Inline visualization of metrics
+- **Exercise card** - Tappable to see video/instructions
+
+**Adjustment Approval UI:**
+- Displayed when agent proposes adjustment
+- Shows:
+  - Readiness score breakdown
+  - Original workout
+  - Proposed changes (highlighted differences)
+  - Reasoning from agent
+- Actions:
+  - Approve (green button)
+  - Reject (red button)
+  - Modify (opens edit screen)
+- After action, confirmation message
+
+**Morning Briefing Screen:**
+- Opens from push notification or home tab
+- Hero readiness score (large number with color coding)
+- Component breakdown (sleep, recovery, strain, contextual)
+- Today's workout preview
+- Agent message (personalized to persona)
+- If adjustment proposed: Approval card
+- Continue to workout button
+
+**Workout Display:**
+- Shows active plan by default
+- If adjustment approved for today: Shows modified version
+- Offline-capable (plan cached locally)
+- When back online: Syncs any manual changes
+
+**Settings - Health Connections:**
+- List of providers with connection status
+- Connect button for each (opens OAuth)
+- Last sync timestamp
+- Manual sync button
+- Disconnect option
+
+**Settings - Persona Selection:**
+- Shows all 4 personas with previews
+- Current selection highlighted
+- Change button (allows switching personas)
+- Warning: "This will change your coach's personality in all conversations"
+
+**Voice Interface:**
+- **Activation:** Large microphone button on workout screen
+- **Visual Feedback:**
+  - Pulsing animation while listening
+  - Waveform visualization during speech
+  - Transcription appears in real-time
+- **Voice Mode Indicators:**
+  - "Listening..." when active
+  - "Processing..." during API calls
+  - "Speaking..." during TTS playback
+- **Controls:**
+  - Tap to start/stop recording
+  - Hold for continuous conversation
+  - Swipe up for voice settings
+- **Workout Integration:**
+  - Voice button prominent during active workout
+  - Auto-activates for rep counting
+  - Quick access to common commands
+- **Accessibility:**
+  - VoiceOver compatible
+  - Haptic feedback on activation
+  - Visual + audio confirmations
+
+### 8.2 Offline Functionality
+
+**What Works Offline:**
+- View current training plan
+- Start and log workout (saved locally)
+- View past workout history (if previously loaded)
+- View exercise library (if cached)
+
+**What Requires Connection:**
+- Chat with AI trainer
+- Morning briefing
+- Health data sync
+- Adjust plan
+- Approve/reject adjustments
+
+**Sync Strategy:**
+- On app launch: Check for connection
+- If connected: Sync adjustments, plan changes, workout logs
+- Background sync when connection restored
+- Offline indicator in UI
+- Queue messages sent offline, deliver when online
+
+### 8.3 Push Notification Strategy
+
+**Morning Briefing:**
+- Sent at user's wake time
+- Title: "Good morning! Here's your readiness"
+- Body: "Readiness: [score]/100. [Brief message]"
+- Tapping: Opens briefing screen
+
+**Adjustment Proposed:**
+- Sent when readiness agent creates adjustment
+- Title: "Workout adjustment suggested"
+- Body: "Based on your recovery, I recommend modifying today's session"
+- Tapping: Opens adjustment approval
+
+**Plan Update:**
+- Sent when plan modification applied
+- Title: "Your plan has been updated"
+- Body: "[Exercise] replaced with [new exercise]"
+- Tapping: Opens plan view
+
+**Milestone Reached:**
+- Sent when user hits goal (weight, PR, streak)
+- Title: "Congratulations! 🎉"
+- Body: Personalized celebration message
+- Tapping: Opens progress screen
+
+**Frequency Limits:**
+- Max 1 briefing per day
+- Max 1 adjustment notification per day
+- Plan updates: As they happen
+- Milestones: Immediately
+- User can configure notification preferences
+
+### 8.4 State Management
+
+**Global State (Redux/Zustand):**
+- User preferences (persona, goals, etc.)
+- Active training plan
+- Current conversation
+- Pending adjustments
+- Health connection status
+
+**Local State (Component):**
+- Chat input text
+- Loading states
+- Form inputs
+
+**Server State (React Query):**
+- Workout history (cached, auto-refetch)
+- Health metrics (cached)
+- Readiness score (cached 1 hour)
+- Messages (optimistic updates)
+
+**Cache Strategy:**
+- Training plan: Cache 24 hours
+- Workout history: Cache 1 hour
+- Health metrics: Cache 30 minutes
+- Chat messages: Never cache (always fresh)
+
+---
+
+## 9. Infrastructure & Deployment
+
+### 9.1 Component Deployment
+
+**Supabase (Managed Service):**
+- Database: Postgres with pgvector extension
+- Auth: Built-in user authentication
+- Edge Functions: Deploy via Supabase CLI
+- Storage: User uploads (future: workout videos)
+- Hosting: Fully managed, auto-scaling
+
+**Python Agent Service:**
+- **Deployment Options:**
+  - **Railway:** Easy deploy, auto-scaling, fair pricing
+  - **Render:** Similar to Railway, good free tier for testing
+  - **Fly.io:** Global distribution, closer to users
+- **Requirements:**
+  - Python 3.11+
+  - FastAPI web server
+  - LangGraph + LangChain
+  - Anthropic SDK
+  - Supabase client
+- **Container:** Docker image
+- **Scaling:** Horizontal (add more instances under load)
+- **Health Check:** /health endpoint for monitoring
+
+**Mobile App:**
+- React Native
+- Deploy via App Store (iOS) and Play Store (Android)
+- CodePush for OTA updates (non-native code)
+
+### 9.2 Environment Management
+
+**Development:**
+- Local Supabase (Docker)
+- Local agent service
+- Ngrok for webhook testing
+- Separate test database
+
+**Staging:**
+- Staging Supabase project
+- Staging agent service instance
+- Test OAuth apps for providers
+- Limited real data
+
+**Production:**
+- Production Supabase project (paid tier)
+- Production agent service (scaled)
+- Production OAuth apps
+- Real user data
+- Monitoring and alerting
+
+### 9.3 Secrets Management
+
+**Sensitive Values:**
+- Supabase service role key
+- Anthropic API key
+- OAuth client secrets (Oura, Whoop, Garmin, Fitbit)
+- LangSmith API key
+- Push notification keys
+
+**Storage:**
+- Development: .env file (gitignored)
+- Staging/Production: Environment variables in hosting platform
+- Supabase Vault for highly sensitive data (tokens)
+
+**Rotation Strategy:**
+- OAuth secrets: Rotate if compromised
+- API keys: Rotate quarterly
+- Database passwords: Rotate bi-annually
+
+### 9.4 Monitoring & Observability
+
+**LangSmith (LangChain's monitoring tool):**
+- Trace every agent interaction
+- See full conversation flow
+- Tool calls and results
+- Token usage
+- Latency per node
+- Error tracking
+- A/B test different prompts
+
+**Supabase Monitoring:**
+- Database query performance
+- API request counts
+- Edge Function errors
+- Auth failures
+
+**Application Monitoring (Sentry):**
+- Mobile app crashes
+- JavaScript errors
+- React Native native errors
+- Breadcrumbs for debugging
+
+**Custom Metrics (agent_logs table):**
+- Agent usage (which agent handles most queries)
+- Tool call frequency
+- Response times
+- Personality consistency (if validating)
+- User approval rate for adjustments
+
+**Alerts:**
+- Agent service down → PagerDuty
+- Database 90% capacity → Slack
+- Error rate >5% → Email
+- Health sync failing → Slack
+- LLM API errors → Slack
+
+### 9.5 Scaling Considerations
+
+**Database:**
+- Supabase Pro tier supports millions of rows
+- Indexes on all foreign keys
+- Partition large tables if needed (workout_sessions, health_metrics)
+- Read replicas for reporting queries
+
+**Agent Service:**
+- Stateless (easy horizontal scaling)
+- Scale based on request rate
+- Auto-scaling triggers:
+  - CPU >70% for 5 minutes
+  - Request queue >100
+- Load balancer distributes requests
+
+**LLM API:**
+- Rate limits from Anthropic (tier-based)
+- Implement queuing if hitting limits
+- Cache common responses (FAQ-style questions)
+- Consider fine-tuned model for efficiency (future)
+
+**Edge Functions:**
+- Supabase auto-scales
+- Cold start latency (~100ms)
+- Keep functions small and focused
+- Use connection pooling for database
+
+**Health Sync:**
+- Stagger cron jobs (not all at once)
+- Batch process users
+- Skip users with no connected devices
+- Retry failed syncs with exponential backoff
+
+---
+
+## 10. Testing Strategy
+
+### 10.1 Agent Testing
+
+**Unit Tests:**
+- Test each agent in isolation
+- Mock LLM responses
+- Verify tool calls
+- Check personality consistency
+
+**Test Cases:**
+
+**Orchestrator Agent:**
+- Correctly classifies coaching intents
+- Correctly classifies plan modification intents
+- Correctly classifies readiness intents
+- Defaults to coach on ambiguous input
+- Loads context properly
+
+**Coach Agent:**
+- Answers form questions accurately
+- Uses correct personality
+- Doesn't attempt to modify plans
+- Uses tools appropriately
+- Provides motivation
+
+**Plan Manager Agent:**
+- Swaps exercises correctly
+- Validates changes
+- Checks injury conflicts
+- Requires approval before applying
+- Uses correct personality
+
+**Readiness Agent:**
+- Calculates readiness accurately
+- Proposes appropriate adjustments
+- Considers weekly goals
+- Uses correct personality
+- Explains reasoning
+
+**Personality Tests:**
+- Each persona avoids banned phrases
+- Response length matches guidelines
+- Emoji usage correct
+- Tone consistent across agents
+
+### 10.2 Integration Testing
+
+**Health Sync:**
+- Mock provider APIs
+- Test data normalization
+- Test conflict resolution
+- Test OAuth flow
+- Test webhook handling
+- Test sync failures
+
+**End-to-End Flow:**
+- User connects Oura → Data syncs → Readiness calculated → Morning briefing sent → User approves adjustment → Workout updated
+
+**API Endpoints:**
+- Test all endpoints with valid auth
+- Test unauthorized access (should fail)
+- Test malformed requests
+- Test idempotency where needed
+
+### 10.3 User Acceptance Testing
+
+**Onboarding Flow:**
+- Complete onboarding with each persona
+- Verify plan generated correctly
+- Verify personality matches selection
+- Verify UI colors/avatar correct
+
+**Chat Interactions:**
+- Ask form questions → Coach responds
+- Request plan change → Plan Manager responds with approval
+- Ask about readiness → Readiness Agent responds
+- Verify personality consistency
+
+**Morning Briefing:**
+- Mock low sleep data
+- Verify adjustment proposed
+- Approve adjustment
+- Verify workout updated
+
+**Health Connections:**
+- Connect each provider
+- Verify data syncs
+- Verify data displayed correctly
+- Disconnect and reconnect
+
+### 10.4 Performance Testing
+
+**Load Testing:**
+- Simulate 100 concurrent users chatting
+- Measure response times
+- Identify bottlenecks
+- Test auto-scaling behavior
+
+**Database Performance:**
+- Query optimization
+- Index usage verification
+- Slow query identification
+
+**LLM Response Time:**
+- Measure p50, p95, p99 latencies
+- Identify timeout issues
+- Test under API rate limits
+
+### 10.5 Security Testing
+
+**Authentication:**
+- Test RLS policies
+- Verify users can only access their data
+- Test token expiration
+- Test session management
+
+**OAuth Security:**
+- Verify state parameter validation
+- Test CSRF protection
+- Test token encryption
+- Test refresh token rotation
+
+**Data Privacy:**
+- Verify health data encryption at rest
+- Test data export (GDPR compliance)
+- Test data deletion (account removal)
+
+---
+
+## 11. Implementation Roadmap
+
+### Phase 3A: Core Agent System (4-6 weeks)
+
+**Goal:** Working AI chat with personality consistency and basic plan modifications
+
+**Week 1-2: Foundation**
+
+**Tasks:**
+- Set up Python project structure
+- Install LangGraph, FastAPI, Supabase client
+- Create Docker container
+- Implement FastAPI endpoints (/chat, /health)
+- Deploy to Railway/Render
+- Build system prompt generator with personality injection
+- Create persona configuration file
+- Test personality differences with sample prompts
+
+**Deliverables:**
+- Running agent service
+- Health check endpoint working
+- Personality system tested manually
+
+**Week 3-4: Specialist Agents**
+
+**Tasks:**
+- Implement LangGraph state machine
+- Build Orchestrator Agent with intent classification
+- Build Coach Agent with tools:
+  - search_exercise_library
+  - get_user_progress
+  - get_workout_history
+- Build Plan Manager Agent with tools:
+  - swap_exercise
+  - get_exercise_alternatives
+  - validate_plan_coherence
+- Test each agent independently
+- Test routing between agents
+
+**Deliverables:**
+- 3 working agents (Orchestrator, Coach, Plan Manager)
+- Tool functions implemented
+- Intent classification working
+
+**Week 5-6: Integration & Frontend**
+
+**Tasks:**
+- Build Supabase Edge Function for agent-chat endpoint
+- Connect Edge Function to agent service
+- Build React Native chat interface
+- Implement message display with personality colors/avatars
+- Build adjustment approval UI
+- Implement approval/reject endpoints
+- Write comprehensive tests (unit + integration)
+- Deploy to production
+
+**Deliverables:**
+- Working chat in mobile app
+- Personality-consistent responses
+- Exercise swap functionality
+- User approval flow
+- All tests passing
+
+---
+
+### Phase 3B: Readiness & Health Integration (4-6 weeks)
+
+**Goal:** Automated morning briefings with health-driven adjustments
+
+**Week 1-2: Readiness System**
+
+**Tasks:**
+- Implement Readiness Agent in LangGraph
+- Build readiness calculation algorithm
+- Create daily_adjustments table
+- Build tools:
+  - calculate_readiness_score
+  - propose_adjustment
+  - calculate_goal_impact
+- Build morning briefing Edge Function
+- Test readiness calculations with sample data
+
+**Deliverables:**
+- Working Readiness Agent
+- Readiness score calculation
+- Adjustment proposal logic
+
+**Week 3-4: Health Integrations**
+
+**Tasks:**
+- Implement Apple Health (React Native HealthKit bridge)
+- Request permissions, sync data to Supabase
+- Build Oura OAuth flow:
+  - Authorization URL generation
+  - Callback handler
+  - Token storage (encrypted)
+  - Sync function
+- Build Whoop OAuth flow (similar to Oura)
+- Implement conflict resolution logic
+- Test with real devices
+
+**Deliverables:**
+- Apple Health working on iOS
+- Oura connection and sync working
+- Whoop connection and sync working
+- Data appearing in health_metrics table
+
+**Week 5-6: Automation & UI**
+
+**Tasks:**
+- Set up Supabase pg_cron for scheduled syncs
+- Build health-sync-cron Edge Function
+- Set to run every hour
+- Build morning briefing automation
+- Calculate user's wake time, send at that time
+- Build morning briefing UI screen:
+  - Readiness display
+  - Today's workout
+  - Adjustment proposal with approve/reject
+- Set up push notifications (Firebase/APNS)
+- Send notification when briefing ready
+- Test end-to-end flow
+
+**Deliverables:**
+- Hourly health sync running
+- Morning briefings automated
+- Push notifications working
+- Complete briefing UI
+
+---
+
+### Phase 3C: Voice Agent Implementation (2-3 weeks)
+
+**Goal:** Hands-free voice interactions during workouts
+
+**Week 1: Core Voice Infrastructure**
+- Integrate OpenAI Whisper API for speech-to-text
+- Implement OpenAI TTS for text-to-speech
+- Build WebSocket infrastructure for streaming
+- Create voice activation UI components
+- Test latency and optimize for <2s responses
+
+**Week 2-3: Voice Features & Polish**
+- Implement rep counting with audio feedback
+- Add voice commands for workout control
+- Create persona-specific voice profiles
+- Build noise cancellation for gym environments
+- Add offline fallback for common commands
+- Integrate with existing agent system
+
+**Deliverables:**
+- Working voice mode in app
+- Sub-2 second response times
+- Rep counting during exercises
+- Emergency stop commands
+- Persona-matched voices
+
+### Phase 3D: Advanced Features (Ongoing)
+
+**Not time-bound, implemented based on priority**
+
+**Provider Expansion:**
+- Add Garmin integration (OAuth 1.0a)
+- Add Fitbit integration
+- Add manual entry option
+
+**Intelligence Enhancements:**
+- Semantic search over workout history (pgvector)
+- Predictive analytics:
+  - Injury risk prediction
+  - Plateau detection
+  - Overtraining warning
+- Nutrition tracking and recommendations
+- Form analysis via video upload (future: CV integration)
+
+**User Experience:**
+- Voice input for chat (whisper API)
+- Audio responses (text-to-speech)
+- Workout video library
+- Social features:
+  - Share workouts with friends
+  - Challenges and leaderboards
+  - Coach sharing (multiple users, one coach personality)
+
+**Platform Expansion:**
+- Web app (desktop experience)
+- Apple Watch app (workout tracking)
+- Wear OS app (Android wearables)
+
+---
+
+## Implementation Priority Summary
+
+### Must Have (Phase 3A)
+✅ Core agent system with personality
+✅ Chat interface
+✅ Basic plan modifications
+✅ User approvals
+
+### Should Have (Phase 3B)
+✅ Health integrations (Apple, Oura, Whoop)
+✅ Readiness calculations
+✅ Morning briefings
+✅ Automated adjustments
+
+### Should Have (Phase 3C)
+✅ Voice Agent with real-time interaction
+✅ Rep counting and form cues
+✅ Hands-free workout mode
+✅ Persona-matched voices
+
+### Nice to Have (Phase 3D)
+⏺ Additional providers (Garmin, Fitbit)
+⏺ Predictive analytics
+⏺ Advanced voice features (continuous conversation)
+⏺ Social features
+⏺ Web platform
+
+---
+
+## Success Metrics
+
+**Technical Metrics:**
+- Agent response time: <3s for 95th percentile
+- Health sync success rate: >98%
+- Morning briefing delivery: >95% on time
+- App crash rate: <1%
+- API uptime: >99.5%
+
+**User Metrics:**
+- Adjustment acceptance rate: Target >70%
+- Chat engagement: Average 2+ messages per workout
+- Health connection rate: Target >60% of users
+- Personality satisfaction: Survey >4.5/5
+- Retention: 30-day retention >80%
+
+**Business Metrics:**
+- User acquisition cost
+- Lifetime value
+- Premium conversion rate (if applicable)
+- Referral rate
+- App store rating: Target >4.7/5
+
+---
+
+## Risk Mitigation
+
+**Technical Risks:**
+- **LLM API outages** → Implement fallback to GPT-4o, cache common responses
+- **Health provider API changes** → Monitor breaking changes, maintain versioned integrations
+- **Database performance** → Index optimization, read replicas, query caching
+- **Agent hallucinations** → Validation layer, user feedback loop, continuous prompt tuning
+
+**User Experience Risks:**
+- **Personality inconsistency** → Automated testing, user surveys, iterative prompt improvement
+- **Poor adjustment accuracy** → A/B test algorithms, collect user feedback, tune thresholds
+- **Notification fatigue** → User controls, frequency limits, smart timing
+
+**Business Risks:**
+- **High LLM costs** → Cache responses, use cheaper models where appropriate, optimize prompts for brevity
+- **Slow user adoption** → Strong onboarding, clear value proposition, referral program
+- **Competitor features** → Rapid iteration, unique personality system, superior integration depth
+
+---
+
+## Conclusion
+
+This document provides a complete blueprint for implementing your AI fitness coach agent system. The architecture is designed to be:
+
+- **Scalable:** Handles growth from 100 to 100,000 users
+- **Maintainable:** Clear separation of concerns, well-defined components
+- **Extensible:** Easy to add new agents, tools, or health providers
+- **User-Centric:** Personality-driven, privacy-focused, offline-capable
+
+**Next Steps:**
+1. Review this plan with your team
+2. Set up development environment
+3. Begin Phase 3A Week 1 tasks
+4. Follow roadmap sequentially
+5. Iterate based on user feedback
+
+**Remember:** Start with core functionality (Phase 3A), prove it works, then expand. Don't build everything at once. Ship early, learn fast, improve continuously.
+
+Good luck building! 💪

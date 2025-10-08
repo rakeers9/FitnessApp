@@ -53,7 +53,7 @@ const TrainingStyleScreen: React.FC<TrainingStyleScreenProps> = ({
   useEffect(() => {
     // Animate progress bar to step 7
     Animated.timing(progressAnim, {
-      toValue: 0.388, // ~38.8% for seventh step (7/18)
+      toValue: 0.555, // ~55.5% for tenth step - Training Style (10/18)
       duration: 420,
       useNativeDriver: false,
     }).start();
@@ -231,7 +231,9 @@ const styles = StyleSheet.create({
   },
   progressBarContainer: {
     flex: 1,
-    paddingHorizontal: 8,
+    maxWidth: 280, // Fixed max width for consistent size
+    alignSelf: 'center',
+    marginHorizontal: 'auto',
   },
   progressTrack: {
     width: '100%',

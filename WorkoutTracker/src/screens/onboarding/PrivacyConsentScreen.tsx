@@ -50,7 +50,7 @@ const PrivacyConsentScreen: React.FC<PrivacyConsentScreenProps> = ({
   useEffect(() => {
     // Animate progress bar to step 9
     Animated.timing(progressAnim, {
-      toValue: 0.5, // 50% for ninth step (9/18)
+      toValue: 0.666, // ~66.6% for twelfth step - Privacy Consent (12/18)
       duration: 420,
       useNativeDriver: false,
     }).start();
@@ -226,7 +226,9 @@ const styles = StyleSheet.create({
   },
   progressBarContainer: {
     flex: 1,
-    paddingHorizontal: 8,
+    maxWidth: 280, // Fixed max width for consistent size
+    alignSelf: 'center',
+    marginHorizontal: 'auto',
   },
   progressTrack: {
     width: '100%',

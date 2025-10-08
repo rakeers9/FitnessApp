@@ -85,7 +85,7 @@ const CoachIntroScreen: React.FC<CoachIntroScreenProps> = ({
 
     // Animate progress bar - starting at step 1 of ~18 total steps
     Animated.timing(progressAnim, {
-      toValue: 0.055, // ~5.5% for first step (1/18)
+      toValue: 0.111, // ~11.1% for second step - Name (2/18)
       duration: 420,
       useNativeDriver: false,
     }).start();
@@ -175,7 +175,7 @@ const CoachIntroScreen: React.FC<CoachIntroScreenProps> = ({
 
       // Update progress to step 2
       Animated.timing(progressAnim, {
-        toValue: 0.11, // ~11% for second step (2/18)
+        toValue: 0.166, // ~16.6% for third step - Age (3/18)
         duration: 420,
         useNativeDriver: false,
       }).start();
@@ -224,14 +224,14 @@ const CoachIntroScreen: React.FC<CoachIntroScreenProps> = ({
 
       // Update progress to step 3
       Animated.timing(progressAnim, {
-        toValue: 0.166, // ~16.6% for third step (3/18)
+        toValue: 0.166, // Keep at Age completion (3/18)
         duration: 420,
         useNativeDriver: false,
       }).start();
 
-      // Calculate delay based on message length (15ms per char + buffer)
+      // Calculate delay based on message length (3ms per char + buffer)
       const messageLength = continueMessage.text.length;
-      const typingDelay = messageLength * 15 + 500; // 15ms per char + 500ms buffer
+      const typingDelay = messageLength * 3 + 200; // 3ms per char + 200ms buffer
 
       // Show continue button after messages finish typing
       setTimeout(() => {
@@ -440,8 +440,9 @@ const styles = StyleSheet.create({
   },
   progressBarContainer: {
     flex: 1,
-    paddingHorizontal: 8,
-    paddingRight: 44, // Add right padding to match back button width + margin
+    maxWidth: 280, // Fixed max width for consistent size
+    alignSelf: 'center',
+    marginHorizontal: 'auto',
   },
   progressTrack: {
     width: '100%',

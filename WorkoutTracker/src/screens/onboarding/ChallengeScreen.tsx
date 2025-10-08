@@ -54,7 +54,7 @@ const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   useEffect(() => {
     // Animate progress bar to step 5
     Animated.timing(progressAnim, {
-      toValue: 0.277, // ~27.7% for fifth step (5/18)
+      toValue: 0.444, // ~44.4% for eighth step - Biggest Challenge (8/18)
       duration: 420,
       useNativeDriver: false,
     }).start();
@@ -232,7 +232,9 @@ const styles = StyleSheet.create({
   },
   progressBarContainer: {
     flex: 1,
-    paddingHorizontal: 8,
+    maxWidth: 280, // Fixed max width for consistent size
+    alignSelf: 'center',
+    marginHorizontal: 'auto',
   },
   progressTrack: {
     width: '100%',

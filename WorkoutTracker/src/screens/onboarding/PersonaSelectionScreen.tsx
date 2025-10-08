@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100, // Space for fixed CTA
   },
   titleSection: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
   title: {
     fontFamily: 'DMSans_500Medium',
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 12, // Further reduced to bring cards even closer to subtitle
+    marginTop: 0, // Remove top margin to bring cards higher
     marginBottom: 40, // Balance spacing
   },
   card: {

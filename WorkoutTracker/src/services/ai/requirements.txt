@@ -1,0 +1,27 @@
+# Core dependencies
+fastapi==0.109.0
+uvicorn==0.27.0
+python-dotenv==1.0.0
+
+# LangChain and LangGraph
+langchain==0.1.6
+langgraph==0.0.26
+langsmith==0.0.87
+langchain-openai==0.0.5
+
+# Database and API clients
+supabase==2.3.3
+httpx==0.26.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# OpenAI for LLM and voice
+openai==1.10.0
+
+# Monitoring and logging
+sentry-sdk==1.40.0
+
+# Development
+pytest==7.4.4
+pytest-asyncio==0.23.3
+black==23.12.1

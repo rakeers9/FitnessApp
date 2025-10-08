@@ -21,6 +21,8 @@ Ask for age → confirmation.
 
 4. Context Questions (New Order)
 
+Current weight
+
 Target weight (slider or numeric).
 
 Main focus (Build Muscle, Lose Fat, Feel Healthier, Sports Performance).
@@ -33,7 +35,6 @@ Experience level (Beginner, Intermediate, Advanced, Returning).
 
 Preferred training style (Bodyweight, Gym, Both).
 
-Injuries (None, select common injuries, or custom input).
 
 5. Data & Privacy
 

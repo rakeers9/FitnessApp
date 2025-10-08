@@ -178,7 +178,7 @@ const AgeConversationScreen: React.FC<AgeConversationScreenProps> = ({
           useNativeDriver: true,
         }),
       ]).start();
-    }, 3000); // Delay to let messages finish typing
+    }, 800); // Reduced delay for faster typing
 
     // Update progress
     Animated.timing(progressAnim, {

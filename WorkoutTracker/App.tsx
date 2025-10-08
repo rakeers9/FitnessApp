@@ -28,6 +28,12 @@ import TrainingStyleScreen from './src/screens/onboarding/TrainingStyleScreen';
 import MainFocusScreen from './src/screens/onboarding/MainFocusScreen';
 import PrivacyConsentScreen from './src/screens/onboarding/PrivacyConsentScreen';
 import AppleHealthScreen from './src/screens/onboarding/AppleHealthScreen';
+import WeightScreen from './src/screens/onboarding/WeightScreen';
+import WorkoutFrequencyScreen from './src/screens/onboarding/WorkoutFrequencyScreen';
+import WorkoutDurationScreen from './src/screens/onboarding/WorkoutDurationScreen';
+import InjuriesScreen from './src/screens/onboarding/InjuriesScreen';
+import ReferralCodeScreen from './src/screens/onboarding/ReferralCodeScreen';
+import PlanSummaryScreen from './src/screens/onboarding/PlanSummaryScreen';
 import { OnboardingProvider } from './src/contexts/OnboardingContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -46,9 +52,23 @@ export default function App() {
   const [showMainFocus, setShowMainFocus] = useState(false);
   const [showPrivacyConsent, setShowPrivacyConsent] = useState(false);
   const [showAppleHealth, setShowAppleHealth] = useState(false);
+  const [showWeight, setShowWeight] = useState(false);
+  const [showWorkoutFrequency, setShowWorkoutFrequency] = useState(false);
+  const [showWorkoutDuration, setShowWorkoutDuration] = useState(false);
+  const [showInjuries, setShowInjuries] = useState(false);
+  const [showReferralCode, setShowReferralCode] = useState(false);
+  const [showPlanSummary, setShowPlanSummary] = useState(false);
   const [selectedPersona, setSelectedPersona] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>('');
   const [userAge, setUserAge] = useState<string>('');
+  const [userWeight, setUserWeight] = useState<{ currentWeight: number; targetWeight: number; unit: 'kg' | 'lb' } | null>(null);
+  const [workoutDays, setWorkoutDays] = useState<string[]>([]);
+  const [workoutDuration, setWorkoutDuration] = useState<number>(45);
+  const [injuries, setInjuries] = useState<{ injuries: string[]; customInjury?: string }>({ injuries: ['none'] });
+  const [referralCode, setReferralCode] = useState<string | undefined>(undefined);
+  const [mainFocus, setMainFocus] = useState<string>('Build Muscle');
+  const [experience, setExperience] = useState<string>('Intermediate');
+  const [trainingStyle, setTrainingStyle] = useState<string>('Gym');
 
   // Load DM Sans fonts
   const [fontsLoaded] = useFonts({
@@ -165,7 +185,8 @@ export default function App() {
             userAge={userAge}
             onContinue={() => {
               console.log('Apple Health connected');
-              // Navigate to next screen (Workout frequency, etc.)
+              setShowAppleHealth(false);
+              setShowWorkoutFrequency(true);
             }}
             onBack={() => {
               setShowAppleHealth(false);
@@ -173,7 +194,160 @@ export default function App() {
             }}
             onSkip={() => {
               console.log('Skipping Apple Health connection');
-              // Navigate to next screen
+              setShowAppleHealth(false);
+              setShowWorkoutFrequency(true);
+            }}
+          />
+        </OnboardingProvider>
+      </SafeAreaProvider>
+    );
+  }
+
+  // Workout Frequency Screen
+  if (showWorkoutFrequency) {
+    console.log('Rendering WorkoutFrequencyScreen');
+    return (
+      <SafeAreaProvider>
+        <OnboardingProvider>
+          <WorkoutFrequencyScreen
+            selectedPersona={selectedPersona}
+            onContinue={(data) => {
+              console.log('Workout days selected:', data.workoutDays);
+              setWorkoutDays(data.workoutDays);
+              setShowWorkoutFrequency(false);
+              setShowWorkoutDuration(true);
+            }}
+            onBack={() => {
+              setShowWorkoutFrequency(false);
+              setShowAppleHealth(true);
+            }}
+            onSkip={() => {
+              console.log('Skipping workout frequency');
+              setShowWorkoutFrequency(false);
+              setShowWorkoutDuration(true);
+            }}
+          />
+        </OnboardingProvider>
+      </SafeAreaProvider>
+    );
+  }
+
+  // Workout Duration Screen
+  if (showWorkoutDuration) {
+    console.log('Rendering WorkoutDurationScreen');
+    return (
+      <SafeAreaProvider>
+        <OnboardingProvider>
+          <WorkoutDurationScreen
+            selectedPersona={selectedPersona}
+            onContinue={(data) => {
+              console.log('Workout duration selected:', data.workoutDuration);
+              setWorkoutDuration(data.workoutDuration);
+              setShowWorkoutDuration(false);
+              setShowInjuries(true);
+            }}
+            onBack={() => {
+              setShowWorkoutDuration(false);
+              setShowWorkoutFrequency(true);
+            }}
+            onSkip={() => {
+              console.log('Skipping workout duration');
+              setShowWorkoutDuration(false);
+              setShowInjuries(true);
+            }}
+          />
+        </OnboardingProvider>
+      </SafeAreaProvider>
+    );
+  }
+
+  // Injuries Screen
+  if (showInjuries) {
+    console.log('Rendering InjuriesScreen');
+    return (
+      <SafeAreaProvider>
+        <OnboardingProvider>
+          <InjuriesScreen
+            selectedPersona={selectedPersona}
+            onContinue={(data) => {
+              console.log('Injuries selected:', data);
+              setInjuries(data);
+              setShowInjuries(false);
+              setShowReferralCode(true);
+            }}
+            onBack={() => {
+              setShowInjuries(false);
+              setShowWorkoutDuration(true);
+            }}
+            onSkip={() => {
+              console.log('Skipping injuries');
+              setInjuries({ injuries: ['none'] });
+              setShowInjuries(false);
+              setShowReferralCode(true);
+            }}
+          />
+        </OnboardingProvider>
+      </SafeAreaProvider>
+    );
+  }
+
+  // Referral Code Screen
+  if (showReferralCode) {
+    console.log('Rendering ReferralCodeScreen');
+    return (
+      <SafeAreaProvider>
+        <OnboardingProvider>
+          <ReferralCodeScreen
+            selectedPersona={selectedPersona}
+            onContinue={(data) => {
+              console.log('Referral code:', data.referralCode);
+              setReferralCode(data.referralCode);
+              setShowReferralCode(false);
+              setShowPlanSummary(true);
+            }}
+            onBack={() => {
+              setShowReferralCode(false);
+              setShowInjuries(true);
+            }}
+            onSkip={() => {
+              console.log('Skipping referral code');
+              setShowReferralCode(false);
+              setShowPlanSummary(true);
+            }}
+          />
+        </OnboardingProvider>
+      </SafeAreaProvider>
+    );
+  }
+
+  // Plan Summary Screen
+  if (showPlanSummary) {
+    console.log('Rendering PlanSummaryScreen');
+    return (
+      <SafeAreaProvider>
+        <OnboardingProvider>
+          <PlanSummaryScreen
+            selectedPersona={selectedPersona}
+            userName={userName}
+            userAge={userAge}
+            userWeight={userWeight}
+            mainFocus={mainFocus}
+            experience={experience}
+            trainingStyle={trainingStyle}
+            workoutDays={workoutDays}
+            workoutDuration={workoutDuration}
+            injuries={injuries}
+            onApplyPlan={() => {
+              console.log('Applying plan and starting app...');
+              // TODO: Navigate to main app with plan
+            }}
+            onSkipPlan={() => {
+              console.log('Starting app without plan...');
+              // TODO: Navigate to main app without plan
+            }}
+            onBack={() => {
+              setShowPlanSummary(false);
+              setShowReferralCode(true);
             }}
           />
         </OnboardingProvider>
@@ -223,17 +397,18 @@ export default function App() {
             userAge={userAge}
             onContinue={(focus) => {
               console.log('Main focus selected:', focus);
+              setMainFocus(focus);
               setShowMainFocus(false);
-              setShowPrivacyConsent(true);
+              setShowMotivation(true);
             }}
             onBack={() => {
               setShowMainFocus(false);
-              setShowTrainingStyle(true);
+              setShowWeight(true);
             }}
             onSkip={() => {
               console.log('Skipping main focus selection');
               setShowMainFocus(false);
-              setShowPrivacyConsent(true);
+              setShowMotivation(true);
             }}
           />
         </OnboardingProvider>
@@ -253,8 +428,9 @@ export default function App() {
             userAge={userAge}
             onContinue={(style) => {
               console.log('Training style selected:', style);
+              setTrainingStyle(style);
               setShowTrainingStyle(false);
-              setShowMainFocus(true);
+              setShowPrivacyConsent(true);
             }}
             onBack={() => {
               setShowTrainingStyle(false);
@@ -263,7 +439,7 @@ export default function App() {
             onSkip={() => {
               console.log('Skipping training style selection');
               setShowTrainingStyle(false);
-              setShowMainFocus(true);
+              setShowPrivacyConsent(true);
             }}
           />
         </OnboardingProvider>
@@ -281,8 +457,9 @@ export default function App() {
             selectedPersona={selectedPersona}
             userName={userName}
             userAge={userAge}
-            onContinue={(experience) => {
-              console.log('Experience selected:', experience);
+            onContinue={(exp) => {
+              console.log('Experience selected:', exp);
+              setExperience(exp);
               setShowExperience(false);
               setShowTrainingStyle(true);
             }}
@@ -331,6 +508,32 @@ export default function App() {
     );
   }
 
+  // Weight Screen
+  if (showWeight) {
+    console.log('Rendering WeightScreen');
+    return (
+      <SafeAreaProvider>
+        <OnboardingProvider>
+          <WeightScreen
+            selectedPersona={selectedPersona}
+            userName={userName}
+            userAge={userAge}
+            onContinue={(data) => {
+              console.log('Weight data collected:', data);
+              setUserWeight(data);
+              setShowWeight(false);
+              setShowMainFocus(true);
+            }}
+            onBack={() => {
+              setShowWeight(false);
+              setShowCoachIntro(true);
+            }}
+          />
+        </OnboardingProvider>
+      </SafeAreaProvider>
+    );
+  }
+
   // Motivation Screen
   if (showMotivation) {
     console.log('Rendering MotivationScreen');
@@ -348,7 +551,7 @@ export default function App() {
             }}
             onBack={() => {
               setShowMotivation(false);
-              setShowCoachIntro(true);
+              setShowMainFocus(true);
             }}
             onSkip={() => {
               console.log('Skipping motivation selection');
@@ -373,7 +576,7 @@ export default function App() {
               setUserName(data.name);
               setUserAge(data.age);
               setShowCoachIntro(false);
-              setShowMotivation(true);
+              setShowWeight(true);
             }}
             onBack={() => {
               setShowCoachIntro(false);
@@ -512,11 +715,11 @@ const styles = StyleSheet.create({
   // Welcome Screen Styles
   fullScreenContainer: {
     flex: 1,
-    backgroundColor: '#0A0A0A', // Ensure full black background
+    backgroundColor: '#000000', // Pure black background
   },
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#000000', // Pure black background
     justifyContent: 'flex-end',
     alignItems: 'center',
   },
